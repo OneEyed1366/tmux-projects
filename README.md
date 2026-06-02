@@ -36,14 +36,25 @@ In Neovim, the same flow lands in a Telescope picker:
 
 ```text
 :lua require("tmux-projects").open()
-┌─ tmux projects ─────────────────────────────────┐
-│ ● main                                           │
-│ ★ /Users/me/projects/tmux-projects               │
-│ + /Users/me/personal/dotfiles                    │
-│   /Users/me/projects/ronnie-ide                  │
-│   /Users/me/personal/wolf-tui                    │
-└──────────────────────────────────────────────────┘
+┌─ tmux projects  (Enter=open  d=delete  r=rename) ─┐
+│ ● main                                              │
+│ ★ /Users/me/projects/tmux-projects                  │
+│ + /Users/me/personal/dotfiles                       │
+│   /Users/me/projects/ronnie-ide                     │
+│   /Users/me/personal/wolf-tui                       │
+└─────────────────────────────────────────────────────┘
 ```
+
+In normal mode use bare `d` and `r` (vim muscle memory). In insert
+mode (typing a filter) use `<C-d>` and `<C-r>` — bare letters
+would just type into the prompt. The bindings work on both the
+prompt and results buffers, regardless of which window has focus.
+
+Press `d` on any `★` or scanned row to remove it from the picker.
+The path is **not deleted from disk** — only the pin entry is removed
+(comments and blank lines in the pin file are preserved). If the
+project has a live tmux session, the picker asks first whether to
+also kill it.
 
 `★` is a pinned project from `~/.config/tmux-projects.txt`. `●` is a
 live tmux session. Other entries are auto-discovered project roots
@@ -298,16 +309,62 @@ your own wrapper or by editing `bin/tmux-sessionizer`.
 
 ### Telescope picker (nvim)
 
-The plugin overrides the default `select_default` action (Enter). All
-other Telescope defaults apply.
+The plugin overrides the default `select_default` action (Enter) and
+binds `d`/`r` (normal mode) and `<C-d>`/`<C-r>` (insert mode) for
+project management. All other Telescope defaults apply.
 
 | Mode | Key | Action |
 | ---- | --- | ------ |
 | n | `<CR>` | Open / switch to selected project |
 | n | `i` | Toggle insert mode for live filtering |
 | n | `<C-c>` | Close picker |
+| n | `d` | Project action — unpin (pinned) / kill session (live) / refuse (browse, scanned) |
+| n | `r` | Rename the entry's tmux session |
 | i | `<CR>` | Same as `<CR>` in normal mode (via Telescope default) |
+| i | `<C-d>` | Same as `d` in normal mode |
+| i | `<C-r>` | Same as `r` in normal mode |
 | i | `<C-c>` | Close picker |
+
+Bare `d` and `r` in normal mode mirror vim muscle memory (the
+`dd` line-delete command and the `r` replace operator). In insert
+mode we use `<C-d>` and `<C-r>` because bare letters would just
+type into the filter prompt.
+
+`d`, `r`, `<C-d>`, and `<C-r>` are all bound on both the prompt
+and the results buffers, so the actions work regardless of which
+window has focus.
+
+`<C-r>` in insert mode overrides vim's default "paste from
+register" — in a text buffer that default is sacred, but in the
+picker's filter prompt it's a footgun (an accidental `<C-r>`
+without a register name drops the picker into a "waiting for
+register" state and the next keystrokes get captured into a
+register). Overriding here is safe and expected.
+
+**Per-row-kind behavior of `d` / `<C-d>` (delete):**
+
+| Row | Action |
+| --- | ------ |
+| `★ /path` (pinned, no live session) | Confirm "Remove '<path>' from the picker?" → unpin |
+| `★ /path` (pinned, with live session) | Confirm "kill it AND unpin?" → kill session + unpin |
+| `● name` (live, not pinned, not scanned) | Confirm "Kill tmux session '<name>'?" → kill session |
+| `+ Browse for folder…` | Refuse (UI affordance, no project) |
+| `  /path` (scanned) | Refuse (no pin to remove; the path regenerates on next picker open) |
+
+**Per-row-kind behavior of `r` / `<C-r>` (rename):**
+
+| Row | Action |
+| --- | ------ |
+| `● name` (live) | Prompt for new name → `tmux rename-session -t <name> <new>` |
+| `★ /path` (pinned, with live session) | Prompt for new name → rename the session derived from the path |
+| `★ /path` (pinned, no live session) | Refuse (open the project first) |
+| `+ Browse for folder…` | Refuse (UI affordance) |
+| `  /path` (scanned) | Refuse (no live session) |
+
+The pin file is a list of paths, not names — so a rename updates
+the tmux session name only, not the pin file. After renaming, the
+picker will show both `● <new>` and `★ /path` for the same
+project; unpin and re-browse if you want to clean up the display.
 
 ## Available functions
 
@@ -316,6 +373,7 @@ other Telescope defaults apply.
 | Command | Effect |
 |---|---|
 | `tmux-sessionizer` | Open fzf picker, switch to / create session |
+| `tmux-sessionizer unpin <path>` | Remove `<path>` from the pin file (idempotent) |
 | `tmux-sessionizer --version` | Print version |
 | `tmux-sessionizer --help` | Full help text |
 | `tmux-sessionizer --validate` | Smoke-check deps + config; exit 0 if OK |
@@ -349,8 +407,10 @@ if you want a clean slate. The plugin spec in your nvim config
 - [x] shared pin file + session-naming contract (symmetry)
 - [x] install.sh + uninstall.sh + Makefile
 - [x] GitHub Actions CI (shellcheck, stylua, bats, mini.test)
-- [x] 62 tests (34 bats + 28 mini.test) covering the contract
+- [x] 74 tests (40 bats + 34 mini.test) covering the contract
 - [x] v0.1.0 release
+- [x] `d` key in picker to unpin / delete a project
+- [x] `tmux-sessionizer unpin <path>` CLI subcommand
 - [ ] Homebrew formula
 - [ ] luarocks release for the plugin
 - [ ] Auto-pinning heuristic for active projects
