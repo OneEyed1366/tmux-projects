@@ -17,7 +17,7 @@ help:
 	@echo "  test-lua       - run mini.test (tests/lua/*_spec.lua)"
 	@echo "  lint           - run shellcheck + stylua"
 	@echo "  lint-bash      - run shellcheck on $(SCRIPT), lib/, install.sh, uninstall.sh"
-	@echo "  lint-lua       - run stylua --check on nvim-plugin/"
+	@echo "  lint-lua       - run stylua --check on lua/"
 	@echo "  clean          - remove test artifacts"
 	@echo
 	@echo "Variables:"
@@ -69,7 +69,7 @@ lint-bash:
 
 lint-lua:
 	@if command -v stylua >/dev/null 2>&1; then \
-		stylua --check nvim-plugin/; \
+		stylua --check lua/; \
 	else \
 		echo "stylua not found. Install: brew install stylua"; \
 		exit 1; \

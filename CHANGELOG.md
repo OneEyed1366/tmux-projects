@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `bin/tmux-sessionizer` — bash + fzf popup project switcher
-- `nvim-plugin/` — Neovim plugin with Telescope picker (`tmux-projects.nvim`)
+- `lua/tmux-projects/` + `plugin/` — Neovim plugin with Telescope picker (`tmux-projects.nvim`)
 - Shared pin file format (`~/.config/tmux-projects.txt`) — one path per line,
   `#` comments, blank lines ignored, trailing slash stripped
 - Symmetry contract between bash and lua: same pin file, same
@@ -30,7 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI: 4 parallel GitHub Actions jobs (shellcheck, stylua, bats, mini.test)
 - Release workflow: tag push → GitHub release with auto-generated notes
 - `act`-compatible workflow files (tested locally with `catthehacker/ubuntu:act-latest`)
-- 1532-word gold-standard README + 553-word nvim-plugin README
+- Comprehensive README with install matrix, configuration, and mappings
 - Pin file spec: [`share/SPEC.md`](share/SPEC.md)
 
 ### Notes

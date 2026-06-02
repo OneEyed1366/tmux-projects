@@ -39,7 +39,7 @@ The `nvim` binary itself is only needed if you're modifying the lua side.
 ## The contract
 
 The bash script (`bin/tmux-sessionizer`) and the nvim plugin
-(`nvim-plugin/lua/tmux-projects/`) MUST agree on:
+(`lua/tmux-projects/`) MUST agree on:
 
 - **Pin file format** — one path per line, `#` comments, blank lines
   ignored, trailing slash stripped. Full spec in `share/SPEC.md`.

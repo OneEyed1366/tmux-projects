@@ -91,7 +91,6 @@ tmux-sessionizer --validate
 ```lua
 {
     "OneEyed1366/tmux-projects",
-    dir   = "nvim-plugin",                  -- omit if installed as a public package
     dependencies = { "nvim-telescope/telescope.nvim" },
     config = function()
         require("tmux-projects").setup({})

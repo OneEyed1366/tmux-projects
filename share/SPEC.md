@@ -42,7 +42,7 @@ implementations must produce identical names for the same input.
 ## Symmetry contract
 
 The bash script (`bin/tmux-sessionizer`) and the nvim plugin
-(`nvim-plugin/lua/tmux-projects/`) MUST:
+(`lua/tmux-projects/`) MUST:
 
 - Read the same file at the same path
 - Apply identical `path_to_session_name` rules

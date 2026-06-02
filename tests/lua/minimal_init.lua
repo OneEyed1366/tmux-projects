@@ -1,4 +1,4 @@
--- Mini-test setup: bootstrap mini.nvim and add the nvim-plugin to rtp.
+-- Mini-test setup: bootstrap mini.nvim and add the plugin (repo root) to rtp.
 -- Intended for: `nvim --headless -u tests/lua/minimal_init.lua`
 
 local data_dir = vim.fn.stdpath("data")
@@ -25,13 +25,12 @@ vim.opt.rtp:append(telescope_path)
 -- Sets the global `MiniTest` accessor.
 require("mini.test").setup()
 
--- The plugin under test.
--- Use the script's own location to find the repo root. This is robust
--- to whatever cwd nvim is started from.
-local this_script = debug.getinfo(1, "S").source:sub(2)  -- strip leading "@"
+-- The plugin under test lives at the repo root (lua/ + plugin/).
+-- Use the script's own location to find it. This is robust to whatever
+-- cwd nvim is started from.
+local this_script = debug.getinfo(1, "S").source:sub(2) -- strip leading "@"
 local script_dir = vim.fn.fnamemodify(this_script, ":h")
-local repo_root = vim.fn.fnamemodify(script_dir .. "/../..", ":p")
-local plugin_path = repo_root .. "/nvim-plugin"
+local plugin_path = vim.fn.fnamemodify(script_dir .. "/../..", ":p"):gsub("/$", "")
 vim.opt.rtp:append(plugin_path)
 
 -- Also push to package.path explicitly as a belt-and-suspenders measure,
