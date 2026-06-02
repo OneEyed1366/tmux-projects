@@ -46,11 +46,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install bats
+      - name: Install dependencies
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y bats
+          sudo apt-get install -y bats fzf fd-find tmux
+          # fd-find on Debian/Ubuntu provides the binary as `fdfind`.
+          # Symlink it to `fd` for the script's PATH lookup.
+          sudo ln -sf "$(command -v fdfind)" /usr/local/bin/fd
       - name: Run bats
         run: |
           set -euo pipefail
@@ -63,9 +66,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install neovim
+        # Pinned version (not the floating "stable" tag, which currently
+        # 302-redirects to an HTML page and breaks the gzip step).
         run: |
           set -euo pipefail
-          curl -sL https://github.com/neovim/neovim/releases/download/stable/nvim-linux64.tar.gz -o /tmp/nvim.tar.gz
+          curl -fsSL https://github.com/neovim/neovim/releases/download/v0.10.2/nvim-linux64.tar.gz -o /tmp/nvim.tar.gz
           tar xzf /tmp/nvim.tar.gz -C /tmp
           sudo mv /tmp/nvim-linux64 /opt/nvim
           sudo ln -sf /opt/nvim/bin/nvim /usr/local/bin/nvim

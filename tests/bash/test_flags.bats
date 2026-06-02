@@ -34,7 +34,9 @@ setup() {
 }
 
 @test "--validate: passes when tmux/fzf/fd exist and ROOTS are real" {
-    run "$BIN" --validate
+    # Override ROOTS to /tmp so the test doesn't depend on ~/projects or
+    # ~/personal existing in the test env (CI runners don't have them).
+    TMUX_SESSIONIZER_ROOTS=/tmp run "$BIN" --validate
     [ "$status" -eq 0 ]
     [[ "$output" == *"OK tmux="* ]]
     [[ "$output" == *"OK roots="* ]]
