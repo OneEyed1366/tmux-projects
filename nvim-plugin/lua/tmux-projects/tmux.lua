@@ -45,6 +45,9 @@ function M.cmd(...)
 end
 
 function M.path_to_session_name(p)
+    -- vim.fn.fnamemodify(p, ":t") returns "" when p ends in "/",
+    -- unlike coreutils `basename` which strips it. Match bash behavior.
+    p = (p:gsub("/+$", ""))
     local base = vim.fn.fnamemodify(p, ":t")
     base = base:gsub("^%.", "")
     base = base:gsub("[ %.:/]", "_")
