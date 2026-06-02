@@ -409,6 +409,7 @@ if you want a clean slate. The plugin spec in your nvim config
 - [x] GitHub Actions CI (shellcheck, stylua, bats, mini.test)
 - [x] 74 tests (40 bats + 34 mini.test) covering the contract
 - [x] v0.1.0 release
+- [x] v0.2.0 release
 - [x] `d` key in picker to unpin / delete a project
 - [x] `tmux-sessionizer unpin <path>` CLI subcommand
 - [ ] Homebrew formula
