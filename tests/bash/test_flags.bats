@@ -58,7 +58,10 @@ setup() {
 # the env-pass-through. --validate is a smoke test for ops/CI; if
 # it doesn't reflect env overrides, the user can't trust it.
 @test "--validate: reflects TMUX_SESSIONIZER_EXTRA_FILE" {
-    TMUX_SESSIONIZER_EXTRA_FILE=/tmp/extra-test.txt run "$BIN" --validate
+    # Override ROOTS so the test doesn't depend on user dirs existing.
+    TMUX_SESSIONIZER_ROOTS=/tmp \
+    TMUX_SESSIONIZER_EXTRA_FILE=/tmp/extra-test.txt \
+    run "$BIN" --validate
     [ "$status" -eq 0 ]
     [[ "$output" == *"OK extra_file=/tmp/extra-test.txt"* ]]
     rm -f /tmp/extra-test.txt
