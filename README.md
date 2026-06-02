@@ -1,118 +1,14 @@
-<div align="center">
-
 # tmux-projects
 
-### Switching projects shouldn't mean losing your editor state.
+A project switcher that fuses tmux, fzf, and Neovim. The bash and
+Neovim sides share a pin file (`~/.config/tmux-projects.txt`) and a
+session-naming rule, so a project pinned from the shell shows as
+`★` in the Telescope picker and vice versa.
 
 [![CI](https://github.com/OneEyed1366/tmux-projects/actions/workflows/ci.yml/badge.svg)](https://github.com/OneEyed1366/tmux-projects/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-A project switcher that fuses tmux, fzf, and Neovim. Pin once, see the same
-`★` in both the shell popup and the nvim picker, land in the same tmux
-session with your buffers still warm.
-
-[Install](#install) · [How it works](#how-it-works) · [Configuration](#configuration) · [Reference](share/SPEC.md)
-
-</div>
-
----
-
-> [!IMPORTANT]
-> **What it touches**
->
-> - `tmux new-session` to spawn a session for a new project (you set the shell that runs in it)
-> - `nvim` inside that session (no magic — just a shell + nvim)
-> - `~/.config/tmux-projects.txt` — created on first use of "Browse for folder…", append-only
->
-> **What it does NOT do**
->
-> - No network calls. No telemetry. No analytics.
-> - No modifications to your nvim config, your tmux config, or your shell rc.
-> - No writes inside the projects you switch into.
->
-> **Reversibility**
->
-> ```bash
-> ./uninstall.sh        # or: make uninstall
-> # Removes both installed files. Your pin file is left in place; delete it manually if you want.
-> ```
-
----
-
-## Install
-
-Pick the surface you need — they share the same pin file and session names.
-
-### Shell (bash + fzf)
-
-```bash
-git clone https://github.com/OneEyed1366/tmux-projects.git
-cd tmux-projects
-./install.sh           # or: make install
-```
-
-Verify:
-
-```bash
-tmux-sessionizer --version
-tmux-sessionizer --validate
-```
-
-Requires: `bash 4+`, `tmux 3+`, `fzf`, `fd`. macOS, Linux, and WSL are supported.
-
-### Neovim (`tmux-projects.nvim`)
-
-With [lazy.nvim](https://github.com/folke/lazy.nvim):
-
-```lua
-{
-    "OneEyed1366/tmux-projects",
-    dir   = "nvim-plugin",                  -- omit if installed as a public package
-    dependencies = { "nvim-telescope/telescope.nvim" },
-    config = function()
-        require("tmux-projects").setup({})  -- see Configuration below
-    end,
-}
-```
-
-Requires: Neovim 0.10+, `telescope.nvim`. The plugin must run inside tmux; it
-exits early with a warning otherwise.
-
-<details>
-<summary>Alternative install methods</summary>
-
-**Shell — without git:**
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/OneEyed1366/tmux-projects/main/bin/tmux-sessionizer \
-    -o ~/.local/bin/tmux-sessionizer
-curl -fsSL https://raw.githubusercontent.com/OneEyed1366/tmux-projects/main/lib/tmux-sessionizer.sh \
-    -o ~/.local/lib/tmux-sessionizer.sh
-chmod +x ~/.local/bin/tmux-sessionizer
-```
-
-**Neovim — with packer.nvim:**
-
-```lua
-use {
-    "OneEyed1366/tmux-projects",
-    config = function() require("tmux-projects").setup({}) end,
-}
-```
-
-**Neovim — with vim-plug:**
-
-```vim
-Plug 'OneEyed1366/tmux-projects'
-" then in init.lua:
-lua require('tmux-projects').setup({})
-```
-
-</details>
-
----
-
-## See it work
+## Demo
 
 ```text
 $ tmux-sessionizer
@@ -149,122 +45,132 @@ In Neovim, the same flow lands in a Telescope picker:
 └──────────────────────────────────────────────────┘
 ```
 
-`★` is a pinned project from `~/.config/tmux-projects.txt`. `●` is a live
-tmux session. The other entries are auto-discovered project roots (any dir
-under `~/projects` or `~/personal` containing a `.git`, plus their direct
-children).
+`★` is a pinned project from `~/.config/tmux-projects.txt`. `●` is a
+live tmux session. Other entries are auto-discovered project roots
+(any dir under your configured roots containing a `.git`, plus their
+direct children).
 
----
+## Requirements
 
-## The problem
+- bash 4+
+- tmux 3+
+- fzf
+- fd
+- Neovim 0.10+ and `nvim-telescope/telescope.nvim` (for the plugin side)
 
-You work on a handful of projects. To switch, you `cd`, restart nvim, lose
-your LSPs, lose your buffer list, lose your undo history. By the time you've
-context-switched three times in an afternoon, half your time is on
-rehydration.
+## Permissions
 
-A tmux session per project solves this — the session stays alive, the panes
-stay alive, nvim stays alive. The friction is naming and remembering the
-sessions. fzf + a curated list of projects is the obvious fix.
+Spawns `tmux new-session` and runs `nvim` inside the new session.
+Creates `~/.config/tmux-projects.txt` on first "Browse for folder…".
+**No network calls, no telemetry, no modifications to your nvim /
+tmux / shell configs, no writes inside the projects you switch into.**
+Full trust model: [`SECURITY.md`](SECURITY.md). Reversibility:
+`./uninstall.sh` (or `make uninstall`).
 
-If you've used [ThePrimeagen's tmux-sessionizer][primeagen], [telescope-project.nvim][telescope-project],
-or [Harpoon][harpoon], the shape is familiar. What's new here is the
-**symmetry contract**: the bash script and the nvim plugin read the same
-pin file, use the same session-naming rule, and produce the same UI markers
-(`★`/`●`/`+`). Pin a project from either surface, see it in the other. The
-contract is enforced by tests on both sides — divergence is a CI failure.
+## Installation
+
+### Shell (bash + fzf)
+
+```bash
+git clone https://github.com/OneEyed1366/tmux-projects.git
+cd tmux-projects
+./install.sh          # or: make install
+```
+
+Verify:
+
+```bash
+tmux-sessionizer --version
+tmux-sessionizer --validate
+```
+
+### Neovim plugin (`tmux-projects.nvim`)
+
+#### [lazy.nvim](https://github.com/folke/lazy.nvim)
+
+```lua
+{
+    "OneEyed1366/tmux-projects",
+    dir   = "nvim-plugin",                  -- omit if installed as a public package
+    dependencies = { "nvim-telescope/telescope.nvim" },
+    config = function()
+        require("tmux-projects").setup({})
+    end,
+}
+```
+
+#### [packer.nvim](https://github.com/wbthomason/packer.nvim)
+
+```lua
+use {
+    "OneEyed1366/tmux-projects",
+    config = function() require("tmux-projects").setup({}) end,
+}
+```
+
+#### [vim-plug](https://github.com/junegunn/vim-plug)
+
+```vim
+Plug 'OneEyed1366/tmux-projects'
+" then in init.lua:
+lua require('tmux-projects').setup({})
+```
+
+The plugin must run inside tmux; it exits early with a warning
+otherwise.
+
+## Setup
+
+### Bash
+
+```bash
+tmux-sessionizer
+```
+
+That's it — fzf popup, pick, switch.
+
+### Neovim
+
+```lua
+require("tmux-projects").setup({})   -- see Configuration
+```
+
+```vim
+:TmuxProjects                        " open the picker
+:TmuxKill                            " multi-select kill picker
+:lua require("tmux-projects").open() " same as :TmuxProjects
+:lua require("tmux-projects").kill() " same as :TmuxKill
+```
+
+Suggested keybinding (in your which-key / config):
+
+```lua
+{ "<leader>p",  function() require("tmux-projects").open() end, desc = "Switch project" },
+{ "<leader>kp", function() require("tmux-projects").kill() end, desc = "Kill project sessions" },
+```
+
+## Why
+
+If you've used [ThePrimeagen's tmux-sessionizer][primeagen],
+[telescope-project.nvim][telescope-project], or [Harpoon][harpoon], the
+shape is familiar. What's new here is the **symmetry contract**: the
+bash script and the nvim plugin read the same pin file, use the same
+session-naming rule, and produce the same UI markers
+(`★` / `●` / `+`). Pin a project from either surface, see it in the
+other. The contract is enforced by tests on both sides — divergence
+is a CI failure, not a user-visible surprise.
 
 [primeagen]: https://github.com/ThePrimeagen/tmux-sessionizer
 [telescope-project]: https://github.com/nvim-telescope/telescope-project.nvim
 [harpoon]: https://github.com/ThePrimeagen/harpoon
 
----
-
-## Getting started
-
-After installing:
-
-1. Run `tmux-sessionizer` — pick a project from the fzf popup. A tmux
-   session is created for new projects, reused for existing ones.
-2. Inside nvim, `<leader>p` (or `:TmuxProjects`) opens the same picker.
-3. To pin a project that's not auto-discovered, pick `+ Browse for
-   folder…` in the picker and choose a directory. It becomes `★` in
-   both UIs.
-
-To customize scan roots (env var or `setup{}` key), see
-[Configuration](#configuration).
-
----
-
-## How it works
-
-`tmux-sessionizer` builds a list of four entry types and hands them to fzf
-or Telescope: live sessions (`●`), pinned projects (`★`), auto-scanned
-project roots, and the "Browse for folder…" entry (`+`). On selection, if
-a session with the matching name exists, the script/plugin switches into it;
-otherwise it spawns a new session running nvim in the chosen directory.
-
-<details>
-<summary>Architecture — data flow</summary>
-
-```
-              ┌─────────────────────────────────────────────┐
-              │           ~/.config/tmux-projects.txt      │
-              │     # one absolute path per line (# = com) │
-              └────────────┬────────────────────────────────┘
-                           │  read
-            ┌──────────────┴──────────────┐
-            ▼                             ▼
-   ┌────────────────┐            ┌─────────────────┐
-   │  bin/tmux-     │            │  nvim-plugin/   │
-   │  sessionizer   │            │  lua/tmux-      │
-   │  (bash + fzf)  │            │  projects/      │
-   │                │            │  (Telescope)    │
-   └───────┬────────┘            └────────┬────────┘
-           │  env vars (TMUX_*)          │  setup{} opts
-           ▼                             ▼
-       ┌─────────────────────────────────────┐
-       │  fzf popup / Telescope picker UI    │
-       │  ★ pinned · ● live · + browse       │
-       └────────────────┬────────────────────┘
-                        │  selected
-                        ▼
-              ┌──────────────────────┐
-              │  tmux has-session?   │
-              │  ├─ yes → switch     │
-              │  └─ no  → new + nvim │
-              └──────────────────────┘
-```
-
-The pin file, session-name rule, and marker vocabulary are the contract.
-Both surfaces parse the same file format; both apply the same name
-transformation (`path_to_session_name`). Tests in `tests/` enforce this.
-
-</details>
-
-<details>
-<summary>Session naming</summary>
-
-A path like `/Users/me/my project` becomes the session name `my_project`.
-The rule: take the basename, drop a leading dot (`~/.config` →
-`config`), replace ` `, `.`, `:`, `/` with `_`. This keeps tmux's
-`session.window.pane` target syntax unambiguous.
-
-The bash and lua implementations must produce identical output for the
-same input. The bash tests live in `tests/bash/`, the lua tests in
-`tests/lua/`, and they cover the same logical cases.
-
-</details>
-
----
-
 ## Configuration
 
 ### Runtime options
 
-All runtime options are configurable in two ways — env var for the bash
-side, `setup{}` table for the nvim plugin. Both sides share the same
-defaults. Where both sides support an option, they have the same
+All runtime options are configurable in two ways — env var for the
+bash side, `setup{}` table for the nvim plugin. Both sides share the
+same defaults. Where both sides support an option, they have the same
 semantics.
 
 | Option | bash env var | nvim `setup{}` key | Type | Default | Notes |
@@ -275,43 +181,34 @@ semantics.
 | fzf prompt | `TMUX_SESSIONIZER_PROMPT` | — | string | `project> ` | Bash only. The nvim plugin uses a hardcoded Telescope prompt title. |
 | Max scan depth | `TMUX_SESSIONIZER_MAX_DEPTH` | `max_depth` | integer | `5` | How deep `fd` looks for `.git` under each root. Lower = faster on huge monorepos. |
 
-### Bash examples
-
-Add to `~/.zshrc`, `~/.bashrc`, or your shell's equivalent:
+#### Bash examples
 
 ```bash
-# Standard install with non-default roots
+# ~/.zshrc or ~/.bashrc
 export TMUX_SESSIONIZER_ROOTS="$HOME/Code:$HOME/personal"
 export TMUX_SESSIONIZER_PROMPT="❯ "
 
-# WSL: use Linux paths, not Windows
+# WSL: use Linux paths
 export TMUX_SESSIONIZER_ROOTS="/home/me/projects:/home/me/work"
 
-# Monorepos: shallow scan so it doesn't crawl into vendor/ etc.
+# Monorepos: shallow scan
 export TMUX_SESSIONIZER_MAX_DEPTH=3
 ```
 
-### Nvim examples
-
-Minimal (zero-config — use defaults):
+#### Nvim examples
 
 ```lua
+-- Minimal (use defaults)
 require("tmux-projects").setup({})
-```
 
-With overrides:
-
-```lua
+-- With overrides
 require("tmux-projects").setup({
     roots        = { "/Users/me/Code", "/Users/me/work" },
     max_depth    = 6,
     browse_label = "+ Pick a project…",
 })
-```
 
-If you want to **extend** the default roots rather than replace them:
-
-```lua
+-- Extend the default roots rather than replace them
 require("tmux-projects").setup({
     roots = vim.list_extend({
         vim.env.HOME .. "/projects",
@@ -319,23 +216,6 @@ require("tmux-projects").setup({
     }, { vim.env.HOME .. "/Code" }),
 })
 ```
-
-### Pin file
-
-`~/.config/tmux-projects.txt` — one absolute path per line. `#` is a
-comment, blank lines are ignored, trailing slashes are stripped.
-
-```
-# ~/projects
-/Users/me/projects/foo
-/Users/me/projects/bar
-
-# ~/personal
-/Users/me/personal/dotfiles
-```
-
-Full spec (session-naming rule, dedup, symmetry contract) lives in
-[`share/SPEC.md`](share/SPEC.md).
 
 ### Install-time options
 
@@ -347,27 +227,32 @@ Full spec (session-naming rule, dedup, symmetry contract) lives in
 | `--bindir DIR` | `BINDIR` | `$PREFIX/bin` | Where `tmux-sessionizer` lands. |
 | `--libdir DIR` | `LIBDIR` | `$PREFIX/lib` | Where `tmux-sessionizer.sh` (the helper lib) lands. |
 
-Examples:
-
 ```bash
-# System-wide (requires sudo)
-sudo PREFIX=/usr/local ./install.sh
-
-# Custom layout
-./install.sh --prefix /opt/tmux-projects --bindir /opt/tmux-projects/bin
-
-# Via Makefile
-make install PREFIX=/usr/local
-
-# Verify the install
-tmux-sessionizer --validate
+sudo PREFIX=/usr/local ./install.sh               # system-wide
+./install.sh --prefix /opt/tmux-projects         # custom layout
+make install PREFIX=/usr/local                   # via Makefile
 ```
+
+### Pin file
+
+`~/.config/tmux-projects.txt` — one absolute path per line. `#` is a
+comment, blank lines are ignored, trailing slashes are stripped.
+
+```text
+# ~/projects
+/Users/me/projects/foo
+/Users/me/projects/bar
+
+# ~/personal
+/Users/me/personal/dotfiles
+```
+
+Full spec (session-naming rule, dedup, symmetry contract): [`share/SPEC.md`](share/SPEC.md).
 
 ### Tmux integration
 
-The script is designed to run from a tmux popup. Add to `~/.tmux.conf`:
-
 ```tmux
+# ~/.tmux.conf
 bind p display-popup -E "tmux-sessionizer"
 # or, if you'd rather not pollute the prefix table:
 bind -T prefix P display-popup -E "tmux-sessionizer"
@@ -375,9 +260,8 @@ bind -T prefix P display-popup -E "tmux-sessionizer"
 
 When tmux spawns a popup it uses a minimal PATH. The script exports
 `/opt/homebrew/bin:/opt/homebrew/sbin:$HOME/.local/bin` ahead of PATH
-itself, so `fzf`, `fd`, and `nvim` are findable in the popup. If your
-tools live elsewhere, extend PATH in `~/.zshrc` (or your shell rc)
-before running tmux.
+so `fzf`, `fd`, and `nvim` are findable in the popup. If your tools
+live elsewhere, extend PATH in your shell rc before running tmux.
 
 ### Spawned shell
 
@@ -388,33 +272,47 @@ command, dropping back to the shell on exit:
 ${SHELL:-/bin/zsh} -ilc 'nvim; exec ${SHELL:-/bin/zsh} -il'
 ```
 
-- `$SHELL` is honored (set to your preferred shell).
-- `-i -l` (interactive + login) is required so `~/.zshrc` / `~/.bashrc`
-  runs — without it, `nvm`, `pyenv`, `asdf`, and friends won't be on
-  PATH and LSPs in nvim crash.
-- After `nvim` exits, control returns to the same shell, so the pane
-  stays alive and you can re-run `nvim` or do shell work without
-  losing the tmux session.
-
-To change the initial command (e.g., to `emacs` or `helix`), edit
-`bin/tmux-sessionizer` — search for `nvim; exec` in the
-`tmux new-session` line. There is no env override; the spawned
-command is intentionally script-level, not config-level, because
-it affects session semantics (what runs on the pane).
-
-### Spawned tmux command
+`$SHELL` is honored. `-i -l` (interactive + login) is required so
+`~/.zshrc` / `~/.bashrc` runs — without it, `nvm` / `pyenv` / `asdf`
+won't be on PATH and LSPs in nvim crash. To change the initial
+command (e.g., to `emacs` or `helix`), edit `bin/tmux-sessionizer` —
+search for `nvim; exec` in the `tmux new-session` line. There is no
+env override; the spawned command is intentionally script-level
+because it affects session semantics.
 
 The script always passes `-L <socket>` to `tmux` so it talks to the
 right per-window server when running inside Ghostty-tmux (or any
 multi-server setup). The socket name is read from `$TMUX_SOCKET` or
-parsed out of `$TMUX`. You don't need to configure this — it's
-automatic.
+parsed out of `$TMUX`. Automatic.
 
----
+## Default mappings
 
-## Reference
+### fzf popup (bash)
 
-### CLI
+The script uses fzf defaults. To override, pass `--bind` flags via
+your own wrapper or by editing `bin/tmux-sessionizer`.
+
+| Key | Action |
+| --- | ------ |
+| `Enter` | Open / switch to selected project |
+| `Ctrl-C` / `Esc` | Cancel |
+
+### Telescope picker (nvim)
+
+The plugin overrides the default `select_default` action (Enter). All
+other Telescope defaults apply.
+
+| Mode | Key | Action |
+| ---- | --- | ------ |
+| n | `<CR>` | Open / switch to selected project |
+| n | `i` | Toggle insert mode for live filtering |
+| n | `<C-c>` | Close picker |
+| i | `<CR>` | Same as `<CR>` in normal mode (via Telescope default) |
+| i | `<C-c>` | Close picker |
+
+## Available functions
+
+### Bash CLI
 
 | Command | Effect |
 |---|---|
@@ -423,70 +321,54 @@ automatic.
 | `tmux-sessionizer --help` | Full help text |
 | `tmux-sessionizer --validate` | Smoke-check deps + config; exit 0 if OK |
 
-### Neovim commands
+### Neovim
 
-| Command | Effect |
+| Function / command | Effect |
 |---|---|
-| `:TmuxProjects` | Open the picker (alias for `<leader>p` if you bind it) |
-| `:TmuxKill` | Multi-select kill picker for tmux sessions |
-| `require("tmux-projects").open()` | Same as `:TmuxProjects` |
-| `require("tmux-projects").kill()` | Same as `:TmuxKill` |
+| `require("tmux-projects").setup({...})` | Configure the plugin (call once at startup) |
+| `require("tmux-projects").open()` | Open the picker |
+| `require("tmux-projects").kill()` | Multi-select kill picker |
+| `:TmuxProjects` | Same as `.open()` |
+| `:TmuxKill` | Same as `.kill()` |
 
-Suggested which-key bindings (in your config):
+## Uninstall
 
-```lua
-{ "<leader>p",  function() require("tmux-projects").open() end, desc = "Switch project" },
-{ "<leader>kp", function() require("tmux-projects").kill() end, desc = "Kill project sessions" },
+```bash
+./uninstall.sh        # or: make uninstall
 ```
 
----
+Removes `~/.local/bin/tmux-sessionizer` and
+`~/.local/lib/tmux-sessionizer.sh`. The pin file
+`~/.config/tmux-projects.txt` is **left in place** — delete it manually
+if you want a clean slate. The plugin spec in your nvim config
+(`require("tmux-projects")` entry) is also yours to remove.
 
-## FAQ
+## Roadmap
 
-**Why a monorepo, not two repos?**
-The bash and lua sides share a contract (pin file format, session naming,
-markers). One repo, one version, one PR. If the contract needs to break,
-it breaks in both places at once.
-
-**Why a separate bin and lua plugin, not one Lua thing?**
-fzf-in-a-tmux-popup is the right surface when you're already in the
-shell. Telescope is the right surface when you're already in nvim. Same
-state, two presentations. No "Telescope-only" users lose the fzf; no
-"fzf-only" users lose the picker.
-
-**Why no automatic pinning on first switch?**
-Pinned projects are intentional — they're the curated short list, not
-"every project I've ever opened." Auto-pinning everything makes the
-pinned list useless. Browse-and-pin is the explicit gesture.
-
-**Does this work with Ghostty / iTerm / Alacritty / Windows Terminal?**
-Yes — the bash side is a shell script that calls `tmux` and the system
-folder picker. Any terminal that can run `tmux` works. The native
-folder picker auto-detects osascript (macOS) → zenity (GNOME) →
-kdialog (KDE) → PowerShell (WSL/Windows).
-
-**How is this different from ThePrimeagen's tmux-sessionizer?**
-The shell UX is similar (fzf picker, live sessions, scanned roots,
-extra file). The differences: (a) the extra file is the contract, not
-an internal detail — the lua plugin reads the same file; (b) the bash
-and lua implementations of the session-naming rule are tested against
-each other; (c) everything is env-configurable, no hardcoded paths.
-
----
+- [x] bash + fzf + tmux sessionizer
+- [x] nvim plugin with Telescope picker
+- [x] shared pin file + session-naming contract (symmetry)
+- [x] install.sh + uninstall.sh + Makefile
+- [x] GitHub Actions CI (shellcheck, stylua, bats, mini.test)
+- [x] 62 tests (34 bats + 28 mini.test) covering the contract
+- [x] v0.1.0 release
+- [ ] Homebrew formula
+- [ ] luarocks release for the plugin
+- [ ] Auto-pinning heuristic for active projects
+- [ ] lualine / statusline integration (show current project)
+- [ ] Optional fzf `--bind` for "+ Browse" hotkey (skip the picker)
 
 ## Contributing
 
-Issues and PRs welcome. Before opening a PR:
+Issues and PRs welcome. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for
+the workflow, contract discipline, and Conventional Commits
+convention. Before opening a PR:
 
 ```bash
 make lint     # shellcheck + stylua
 make test     # bats + mini.test
 ```
 
-If you're changing the pin file format or session-naming rule, please
-update `share/SPEC.md` and the tests in both `tests/bash/` and
-`tests/lua/`. The contract is the point.
-
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT — see [`LICENSE`](LICENSE).
