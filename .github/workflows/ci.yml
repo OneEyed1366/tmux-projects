@@ -1,0 +1,90 @@
+name: ci
+
+on:
+  push:
+    branches: [master, 'feature/**']
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  lint-bash:
+    name: shellcheck (bash)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+      - name: Run shellcheck
+        run: |
+          set -euo pipefail
+          shellcheck bin/tmux-sessionizer lib/tmux-sessionizer.sh install.sh uninstall.sh
+          echo "shellcheck: 0 issues"
+
+  lint-lua:
+    name: stylua (lua)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install stylua
+        run: |
+          set -euo pipefail
+          curl -sL https://github.com/JohnnyMorganz/StyLua/releases/latest/download/stylua-linux-x86_64.zip -o /tmp/stylua.zip
+          unzip -o /tmp/stylua.zip -d /usr/local/bin
+          chmod +x /usr/local/bin/stylua
+      - name: Run stylua
+        run: |
+          set -euo pipefail
+          stylua --version
+          stylua --check nvim-plugin/
+          echo "stylua: 0 formatting issues"
+
+  test-bash:
+    name: bats (bash)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y bats fzf fd-find tmux
+          # fd-find on Debian/Ubuntu provides the binary as `fdfind`.
+          # Symlink it to `fd` for the script's PATH lookup.
+          sudo ln -sf "$(command -v fdfind)" /usr/local/bin/fd
+      - name: Run bats
+        run: |
+          set -euo pipefail
+          bats --version
+          bats tests/bash/
+
+  test-lua:
+    name: mini.test (lua)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install neovim
+        # Pinned version (not the floating "stable" tag, which currently
+        # 302-redirects to an HTML page and breaks the gzip step).
+        run: |
+          set -euo pipefail
+          curl -fsSL https://github.com/neovim/neovim/releases/download/v0.10.2/nvim-linux64.tar.gz -o /tmp/nvim.tar.gz
+          tar xzf /tmp/nvim.tar.gz -C /tmp
+          sudo mv /tmp/nvim-linux64 /opt/nvim
+          sudo ln -sf /opt/nvim/bin/nvim /usr/local/bin/nvim
+          nvim --version | head -1
+      - name: Install test dependencies
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.local/share/nvim/lazy
+          git clone --depth=1 https://github.com/echasnovski/mini.nvim     ~/.local/share/nvim/lazy/mini.nvim
+          git clone --depth=1 https://github.com/nvim-lua/plenary.nvim    ~/.local/share/nvim/lazy/plenary.nvim
+          git clone --depth=1 https://github.com/nvim-telescope/telescope.nvim ~/.local/share/nvim/lazy/telescope.nvim
+      - name: Run mini.test
+        run: |
+          set -euo pipefail
+          nvim --headless -u tests/lua/minimal_init.lua \
+            -c "lua MiniTest.run({ collect = { find_files = function() return vim.fn.globpath('tests/lua', '*_spec.lua', true, true) end } })" \
+            -c "qa!"

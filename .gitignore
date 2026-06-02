@@ -1,0 +1,30 @@
+# nvim test artifacts
+.nvim-test/
+.nvim-buf/
+.nvim-tmp/
+*.nvim-test
+
+# Project knowledge base (local, gitignored per AGENTS.md)
+.docs/
+
+# editor backups
+*~
+.*.swp
+.*.swo
+
+# stylua cache
+.stylua-cache/
+
+# lua-language-server
+.luarc.json
+.luarc.jsonc
+
+# OS
+.DS_Store
+
+# editor
+.vscode/
+.idea/
+
+# CI / bats
+bats-tmp/

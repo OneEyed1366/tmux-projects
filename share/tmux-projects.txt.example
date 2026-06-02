@@ -1,0 +1,6 @@
+# Example pins file.
+# Copy to ~/.config/tmux-projects.txt and edit.
+# One absolute path per line. Lines starting with # are comments.
+
+# /Users/me/projects/foo
+# /Users/me/personal/bar
