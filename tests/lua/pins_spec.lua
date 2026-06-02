@@ -95,4 +95,88 @@ T["add: trailing-slash path matches slashless existing"] = function()
     eq({ "/Users/me/foo" }, pins.read(p))
 end
 
+-- почему: removal = dedup's mirror. If the picker lets users pin a
+-- path but never unpin it, the "delete project" picker action is a
+-- lie. The pin file must shrink on remove or stale entries haunt
+-- the picker.
+T["remove: removes the target path"] = function()
+    local p = vim.fn.tempname()
+    pins.add(p, "/Users/me/a")
+    pins.add(p, "/Users/me/b")
+    pins.add(p, "/Users/me/c")
+    eq(true, pins.remove(p, "/Users/me/b"))
+    eq({ "/Users/me/a", "/Users/me/c" }, pins.read(p))
+end
+
+-- почему: removing the only entry should leave an empty file (not
+-- delete the file). The picker reads PINS=[] from a missing or empty
+-- file, but the file's existence vs. absence is observable to other
+-- tools (e.g. `--validate` checks the dir). Preserve the file.
+T["remove: removes the only entry, file stays empty"] = function()
+    local p = vim.fn.tempname()
+    pins.add(p, "/Users/me/solo")
+    eq(true, pins.remove(p, "/Users/me/solo"))
+    eq(1, vim.fn.filereadable(p))
+    eq({}, pins.read(p))
+    local f = io.open(p, "r")
+    eq("", f:read("*a"))
+    f:close()
+end
+
+-- почему: the picker action is idempotent UX-wise — pressing `d`
+-- on a project that's already gone must not error. The contract:
+-- silent no-op returning false. Violation = an error toast every
+-- time the user clicks an already-deleted row.
+T["remove: idempotent — removing an absent path returns false"] = function()
+    local p = vim.fn.tempname()
+    eq(false, pins.remove(p, "/Users/me/never-pinned"))
+end
+
+-- почему: unpin on a never-created file (e.g. user has never
+-- browsed) must not error and must not create the file. Creating
+-- an empty file here would be a side effect with no caller asking
+-- for it.
+T["remove: missing file is a silent no-op"] = function()
+    local p = vim.fn.tempname()
+    eq(false, pins.remove(p, "/Users/me/anything"))
+    eq(0, vim.fn.filereadable(p))
+end
+
+-- почему: same slash-stripping contract as add. The picker stores
+-- paths slashless; if remove didn't strip, the user's `d` action
+-- on a path added via the OS picker (which may give `/foo/`) would
+-- silently fail to match. See add:trailing-slash test for the
+-- symmetric case.
+T["remove: trailing-slash path matches slashless existing"] = function()
+    local p = vim.fn.tempname()
+    pins.add(p, "/Users/me/foo")
+    eq(true, pins.remove(p, "/Users/me/foo/"))
+    eq({}, pins.read(p))
+end
+
+-- почему: comments and blank lines must survive remove. A naive
+-- rewrite that only writes parsed paths would erase user comments
+-- — silent data loss on every delete.
+T["remove: preserves comments and blank lines in the file"] = function()
+    local p = vim.fn.tempname()
+    write_pins(p, {
+        "# my curated list",
+        "/Users/me/foo",
+        "",
+        "# /Users/me/commented-out",
+        "/Users/me/bar",
+    })
+    eq(true, pins.remove(p, "/Users/me/foo"))
+    eq({ "/Users/me/bar" }, pins.read(p))
+    local f = io.open(p, "r")
+    local contents = f:read("*a")
+    f:close()
+    -- Header comment must still be there.
+    assert(contents:find("# my curated list", 1, true), "lost header comment")
+    -- Surrounding comment must still be there.
+    assert(contents:find("# /Users/me/commented-out", 1, true), "lost surrounding comment")
+    -- Blank line preserved.
+    assert(contents:find("\n\n", 1, true), "lost blank line")
+end
+
 return T
