@@ -182,17 +182,17 @@ contract is enforced by tests on both sides — divergence is a CI failure.
 
 ## Getting started
 
-**Day 1.** Install, run `tmux-sessionizer`, pick a project. Confirm the
-session was created (`tmux ls`).
+After installing:
 
-**Day 2.** Pick a project you don't see in the list. Hit `+ Browse for
-folder…` and choose a directory. It's now pinned (look for `★` next time).
+1. Run `tmux-sessionizer` — pick a project from the fzf popup. A tmux
+   session is created for new projects, reused for existing ones.
+2. Inside nvim, `<leader>p` (or `:TmuxProjects`) opens the same picker.
+3. To pin a project that's not auto-discovered, pick `+ Browse for
+   folder…` in the picker and choose a directory. It becomes `★` in
+   both UIs.
 
-**Day 3.** Inside nvim, `<leader>p` opens the same picker (or `:TmuxProjects`).
-Pick a project — same tmux session, same nvim state.
-
-**Optional.** Add your own scan roots if you keep projects in non-standard
-locations. Pin your dotfiles. Pin work stuff separately from personal.
+To customize scan roots (env var or `setup{}` key), see
+[Configuration](#configuration).
 
 ---
 
