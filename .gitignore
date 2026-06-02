@@ -4,6 +4,9 @@
 .nvim-tmp/
 *.nvim-test
 
+# Project knowledge base (local, gitignored per AGENTS.md)
+.docs/
+
 # editor backups
 *~
 .*.swp
