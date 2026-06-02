@@ -260,29 +260,155 @@ same input. The bash tests live in `tests/bash/`, the lua tests in
 
 ## Configuration
 
-| What | bash (env var) | nvim (`setup{}` key) | Default |
-|---|---|---|---|
-| Project roots | `TMUX_SESSIONIZER_ROOTS` (colon-separated) | `roots` (table) | `~/projects:~/personal` |
-| Pins file | `TMUX_SESSIONIZER_EXTRA_FILE` | `extra_file` | `~/.config/tmux-projects.txt` |
-| Browse label | `TMUX_SESSIONIZER_BROWSE_LABEL` | `browse_label` | `+ Browse for folder…` |
-| fzf prompt | `TMUX_SESSIONIZER_PROMPT` | — (Telescope) | `project> ` |
-| Max scan depth | `TMUX_SESSIONIZER_MAX_DEPTH` | `max_depth` | `5` |
+### Runtime options
 
-The pin file format and full session-naming spec live in
-[`share/SPEC.md`](share/SPEC.md).
+All runtime options are configurable in two ways — env var for the bash
+side, `setup{}` table for the nvim plugin. Both sides share the same
+defaults. Where both sides support an option, they have the same
+semantics.
 
-Example — single-user with non-standard roots:
+| Option | bash env var | nvim `setup{}` key | Type | Default | Notes |
+|---|---|---|---|---|---|
+| Project roots | `TMUX_SESSIONIZER_ROOTS` | `roots` | string (colon-sep) / table | `$HOME/projects:$HOME/personal` | Tilde-expanded. Each entry is scanned for `.git` roots and direct children. `roots` is a **sequence** — replaced wholesale, not deep-merged with defaults. |
+| Pins file | `TMUX_SESSIONIZER_EXTRA_FILE` | `extra_file` | string | `$HOME/.config/tmux-projects.txt` | Created on first use of "Browse for folder…". Read by both sides. |
+| Browse label | `TMUX_SESSIONIZER_BROWSE_LABEL` | `browse_label` | string | `+ Browse for folder…` | Label of the OS-folder-picker entry in the list. |
+| fzf prompt | `TMUX_SESSIONIZER_PROMPT` | — | string | `project> ` | Bash only. The nvim plugin uses a hardcoded Telescope prompt title. |
+| Max scan depth | `TMUX_SESSIONIZER_MAX_DEPTH` | `max_depth` | integer | `5` | How deep `fd` looks for `.git` under each root. Lower = faster on huge monorepos. |
+
+### Bash examples
+
+Add to `~/.zshrc`, `~/.bashrc`, or your shell's equivalent:
 
 ```bash
-export TMUX_SESSIONIZER_ROOTS="$HOME/Code:$HOME/work"
+# Standard install with non-default roots
+export TMUX_SESSIONIZER_ROOTS="$HOME/Code:$HOME/personal"
+export TMUX_SESSIONIZER_PROMPT="❯ "
+
+# WSL: use Linux paths, not Windows
+export TMUX_SESSIONIZER_ROOTS="/home/me/projects:/home/me/work"
+
+# Monorepos: shallow scan so it doesn't crawl into vendor/ etc.
+export TMUX_SESSIONIZER_MAX_DEPTH=3
 ```
+
+### Nvim examples
+
+Minimal (zero-config — use defaults):
+
+```lua
+require("tmux-projects").setup({})
+```
+
+With overrides:
 
 ```lua
 require("tmux-projects").setup({
-    roots     = { "/Users/me/Code", "/Users/me/work" },
-    max_depth = 6,
+    roots        = { "/Users/me/Code", "/Users/me/work" },
+    max_depth    = 6,
+    browse_label = "+ Pick a project…",
 })
 ```
+
+If you want to **extend** the default roots rather than replace them:
+
+```lua
+require("tmux-projects").setup({
+    roots = vim.list_extend({
+        vim.env.HOME .. "/projects",
+        vim.env.HOME .. "/personal",
+    }, { vim.env.HOME .. "/Code" }),
+})
+```
+
+### Pin file
+
+`~/.config/tmux-projects.txt` — one absolute path per line. `#` is a
+comment, blank lines are ignored, trailing slashes are stripped.
+
+```
+# ~/projects
+/Users/me/projects/foo
+/Users/me/projects/bar
+
+# ~/personal
+/Users/me/personal/dotfiles
+```
+
+Full spec (session-naming rule, dedup, symmetry contract) lives in
+[`share/SPEC.md`](share/SPEC.md).
+
+### Install-time options
+
+`install.sh` and `make install` accept three paths:
+
+| Flag | env var | Default | Purpose |
+|---|---|---|---|
+| `--prefix DIR` | `PREFIX` | `~/.local` | Root of the install. |
+| `--bindir DIR` | `BINDIR` | `$PREFIX/bin` | Where `tmux-sessionizer` lands. |
+| `--libdir DIR` | `LIBDIR` | `$PREFIX/lib` | Where `tmux-sessionizer.sh` (the helper lib) lands. |
+
+Examples:
+
+```bash
+# System-wide (requires sudo)
+sudo PREFIX=/usr/local ./install.sh
+
+# Custom layout
+./install.sh --prefix /opt/tmux-projects --bindir /opt/tmux-projects/bin
+
+# Via Makefile
+make install PREFIX=/usr/local
+
+# Verify the install
+tmux-sessionizer --validate
+```
+
+### Tmux integration
+
+The script is designed to run from a tmux popup. Add to `~/.tmux.conf`:
+
+```tmux
+bind p display-popup -E "tmux-sessionizer"
+# or, if you'd rather not pollute the prefix table:
+bind -T prefix P display-popup -E "tmux-sessionizer"
+```
+
+When tmux spawns a popup it uses a minimal PATH. The script exports
+`/opt/homebrew/bin:/opt/homebrew/sbin:$HOME/.local/bin` ahead of PATH
+itself, so `fzf`, `fd`, and `nvim` are findable in the popup. If your
+tools live elsewhere, extend PATH in `~/.zshrc` (or your shell rc)
+before running tmux.
+
+### Spawned shell
+
+New sessions run an interactive login shell with `nvim` as the initial
+command, dropping back to the shell on exit:
+
+```bash
+${SHELL:-/bin/zsh} -ilc 'nvim; exec ${SHELL:-/bin/zsh} -il'
+```
+
+- `$SHELL` is honored (set to your preferred shell).
+- `-i -l` (interactive + login) is required so `~/.zshrc` / `~/.bashrc`
+  runs — without it, `nvm`, `pyenv`, `asdf`, and friends won't be on
+  PATH and LSPs in nvim crash.
+- After `nvim` exits, control returns to the same shell, so the pane
+  stays alive and you can re-run `nvim` or do shell work without
+  losing the tmux session.
+
+To change the initial command (e.g., to `emacs` or `helix`), edit
+`bin/tmux-sessionizer` — search for `nvim; exec` in the
+`tmux new-session` line. There is no env override; the spawned
+command is intentionally script-level, not config-level, because
+it affects session semantics (what runs on the pane).
+
+### Spawned tmux command
+
+The script always passes `-L <socket>` to `tmux` so it talks to the
+right per-window server when running inside Ghostty-tmux (or any
+multi-server setup). The socket name is read from `$TMUX_SOCKET` or
+parsed out of `$TMUX`. You don't need to configure this — it's
+automatic.
 
 ---
 
