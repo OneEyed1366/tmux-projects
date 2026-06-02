@@ -1,0 +1,350 @@
+#!/usr/bin/env bash
+# Project switcher: fzf over ROOTS + live tmux sessions + pinned projects.
+# Picked path → reuse or create a tmux session named after the dir, with nvim.
+# Picked existing session name → switch-client to it.
+# Free-typed path (not in list) → treated like a scanned dir.
+
+set -euo pipefail
+
+VERSION="0.1.0"
+
+# ---- Help / version / validate -----------------------------------------
+
+show_help() {
+    cat <<'EOF'
+tmux-sessionizer — switch to or create tmux sessions for project folders
+
+USAGE:
+    tmux-sessionizer [OPTIONS]
+
+OPTIONS:
+    -h, --help       Show this help and exit
+    -v, --version    Show version and exit
+    --validate       Check config + dependencies, exit 0 if OK
+
+ENVIRONMENT:
+    TMUX_SESSIONIZER_ROOTS
+        Colon-separated project roots to scan for git repos and dirs.
+        Each entry is tilde-expanded. Default: ~/projects:~/personal
+
+    TMUX_SESSIONIZER_EXTRA_FILE
+        Path to the pinned projects file. Created on first browse.
+        Default: ~/.config/tmux-projects.txt
+
+    TMUX_SESSIONIZER_BROWSE_LABEL
+        Label for the OS folder picker entry in the fzf list.
+        Default: "+ Browse for folder…  (Finder)"
+
+    TMUX_SESSIONIZER_PROMPT
+        fzf prompt string. Default: "project> "
+
+    TMUX_SESSIONIZER_MAX_DEPTH
+        fd --max-depth for finding .git dirs under ROOTS. Default: 5
+
+PIN FILE FORMAT:
+    One absolute path per line. Lines starting with # are comments.
+    Blank lines ignored. Trailing slashes stripped. See share/SPEC.md.
+
+BEHAVIOR:
+    Lists live tmux sessions (●), pinned projects (★), and auto-scanned
+    project dirs. Pick one → reuse or create a tmux session named after
+    the dir's basename (with tmux-unsafe chars replaced by _). The
+    session runs an interactive shell that exec's nvim, then drops back
+    to a shell on nvim exit.
+
+EXAMPLES:
+    tmux-sessionizer
+    TMUX_SESSIONIZER_ROOTS=~/Code tmux-sessionizer
+    tmux-sessionizer --validate && echo "ready"
+EOF
+}
+
+show_version() {
+    printf 'tmux-sessionizer %s\n' "$VERSION"
+}
+
+validate_config() {
+    local missing=()
+    local cmd
+    for cmd in tmux fzf fd; do
+        if ! command -v "$cmd" >/dev/null 2>&1; then
+            missing+=("$cmd")
+        fi
+    done
+    if [[ ${#missing[@]} -gt 0 ]]; then
+        printf 'Missing required commands: %s\n' "${missing[*]}" >&2
+        return 1
+    fi
+
+    local extra_dir
+    extra_dir=$(dirname -- "$EXTRA_FILE")
+    if [[ ! -d "$extra_dir" ]]; then
+        if ! mkdir -p -- "$extra_dir" 2>/dev/null; then
+            printf 'Cannot create pins file dir: %s\n' "$extra_dir" >&2
+            return 1
+        fi
+        printf 'Created pins file dir: %s\n' "$extra_dir"
+    fi
+
+    local r found_roots=0
+    for r in "${ROOTS[@]}"; do
+        if [[ -d "$r" ]]; then
+            # Pre-increment (not post) so first call returns 1, not 0;
+            # ((0)) exits 1 under set -e and kills the script.
+            ((++found_roots))
+        fi
+    done
+    if [[ $found_roots -eq 0 ]]; then
+        printf 'Warning: none of the configured ROOTS exist:\n' >&2
+        printf '  %s\n' "${ROOTS[@]}" >&2
+        return 1
+    fi
+
+    printf 'OK tmux=%s fzf=%s fd=%s\n' \
+        "$(command -v tmux)" "$(command -v fzf)" "$(command -v fd)"
+    printf 'OK roots=%s\n' "${ROOTS[*]}"
+    printf 'OK extra_file=%s\n' "$EXTRA_FILE"
+    return 0
+}
+
+# ---- Args parsing -------------------------------------------------------
+
+ACTION="run"
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -h|--help)
+            show_help
+            exit 0
+            ;;
+        -v|--version)
+            show_version
+            exit 0
+            ;;
+        --validate)
+            ACTION="validate"
+            ;;
+        --)
+            shift
+            break
+            ;;
+        -*)
+            printf 'Unknown option: %s\n' "$1" >&2
+            printf 'Run with --help for usage.\n' >&2
+            exit 2
+            ;;
+        *)
+            break
+            ;;
+    esac
+    shift
+done
+
+# ---- tmux shim for per-window server ------------------------------------
+# tmux display-popup spawns commands with a minimal PATH (no /opt/homebrew),
+# so fzf/fd/nvim won't be found unless we extend it here.
+export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:$HOME/.local/bin:$PATH"
+
+# Per-window tmux server: ghostty-tmux wrapper exports TMUX_SOCKET so every
+# child invocation talks to the right server. We derive a `tmux` shim that
+# always passes -L. Without this we'd hit the default socket and not see
+# our window's sessions.
+if [[ -n "${TMUX_SOCKET:-}" ]]; then
+    tmux() { /opt/homebrew/bin/tmux -L "$TMUX_SOCKET" "$@"; }
+elif [[ -n "${TMUX:-}" ]]; then
+    # Inside tmux but no socket env (e.g. attached manually) — infer from $TMUX.
+    socket_path="${TMUX%%,*}"
+    socket_name=$(basename "$socket_path")
+    tmux() { /opt/homebrew/bin/tmux -L "$socket_name" "$@"; }
+fi
+
+# ---- Config (env with defaults) -----------------------------------------
+
+# Defaults (overridable via TMUX_SESSIONIZER_* env vars)
+DEFAULT_ROOTS=("$HOME/projects" "$HOME/personal")
+DEFAULT_EXTRA_FILE="$HOME/.config/tmux-projects.txt"
+DEFAULT_BROWSE_LABEL="+ Browse for folder…  (Finder)"
+DEFAULT_PROMPT="project> "
+DEFAULT_MAX_DEPTH="5"
+
+# ROOTS: parse TMUX_SESSIONIZER_ROOTS (colon-separated) and tilde-expand each entry.
+ROOTS=()
+if [[ -n "${TMUX_SESSIONIZER_ROOTS:-}" ]]; then
+    IFS=':' read -r -a ROOTS <<< "$TMUX_SESSIONIZER_ROOTS"
+    i=0
+    for i in "${!ROOTS[@]}"; do
+        # shellcheck disable=SC2088  # ~ is a literal pattern, not expansion
+        case "${ROOTS[i]}" in
+            "~") ROOTS[i]="$HOME" ;;
+            "~/"*) ROOTS[i]="$HOME/${ROOTS[i]:2}" ;;
+        esac
+    done
+else
+    ROOTS=("${DEFAULT_ROOTS[@]}")
+fi
+
+EXTRA_FILE="${TMUX_SESSIONIZER_EXTRA_FILE:-$DEFAULT_EXTRA_FILE}"
+BROWSE_LABEL="${TMUX_SESSIONIZER_BROWSE_LABEL:-$DEFAULT_BROWSE_LABEL}"
+PROMPT="${TMUX_SESSIONIZER_PROMPT:-$DEFAULT_PROMPT}"
+MAX_DEPTH="${TMUX_SESSIONIZER_MAX_DEPTH:-$DEFAULT_MAX_DEPTH}"
+
+# ---- Validate subcommand ------------------------------------------------
+
+if [[ "$ACTION" == "validate" ]]; then
+    validate_config
+    exit $?
+fi
+
+# ---- Normal run ---------------------------------------------------------
+
+# Derive a tmux-safe session name from a directory path.
+# Leading dot is dropped entirely (~/.config → "config", not "_config").
+# Internal dots/spaces/colons/slashes become underscores so tmux's target
+# syntax (session.window.pane) doesn't get confused.
+path_to_session_name() {
+    local p="$1"
+    local base
+    base=$(basename "$p")
+    base="${base#.}"                          # drop leading dot
+    # shellcheck disable=SC2001
+    base=$(printf '%s' "$base" | tr ' .:/' '____')
+    printf '%s' "$base"
+}
+
+# 1. Live sessions first, marked with ● so we can strip them later.
+live=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | sed 's/^/● /' || true)
+
+# 2. Scanned project dirs. Strategy: find every .git up to MAX_DEPTH, take
+#    its parent → that's a project root. Plus all depth-1 dirs (so empty
+#    workspaces like ~/projects/scratch/ are still listed).
+git_roots=$(fd --hidden --type d --max-depth "$MAX_DEPTH" '^\.git$' "${ROOTS[@]}" 2>/dev/null \
+    | sed 's|/\.git/*$||' || true)
+top_level=$(fd --type d --max-depth 1 --min-depth 1 . "${ROOTS[@]}" 2>/dev/null \
+    | sed 's|/$||' || true)
+
+# 3. User-curated extra projects, marked with ★ so they sort to the top.
+#    File format: one absolute path per line, # comments and blank lines OK.
+#    Hide entries whose session is already live (avoids ★path + ●session duplicates).
+extra=""
+if [[ -f "$EXTRA_FILE" ]]; then
+    live_names=$(printf '%s\n' "$live" | sed 's/^● //')
+    while IFS= read -r p; do
+        [[ -z "$p" || "$p" =~ ^[[:space:]]*# ]] && continue
+        p="${p%/}"
+        sess=$(path_to_session_name "$p")
+        if printf '%s\n' "$live_names" | grep -qxF "$sess"; then
+            continue  # already shown as live
+        fi
+        extra+="★ ${p}"$'\n'
+    done < "$EXTRA_FILE"
+fi
+
+scanned=$(printf '%s\n%s\n' "$git_roots" "$top_level" | awk 'NF' | sort -u)
+
+# 4. fzf with --print-query:
+#    line 1 = what user typed (the query)
+#    line 2 = what user picked (only present if a list item was selected)
+#    If line 2 is empty → user typed a custom path and pressed Enter on it.
+fzf_out=$( { printf '%s\n' "$BROWSE_LABEL"; printf '%s\n' "$live"; printf '%s\n' "$extra"; printf '%s\n' "$scanned"; } \
+    | awk 'NF' \
+    | fzf --prompt="$PROMPT" --print-query --no-multi \
+          --header='Enter=open  ★=pinned  ●=live  + Browse=pick in Finder' )
+
+[[ -z "${fzf_out:-}" ]] && exit 0
+
+query=$(printf '%s\n' "$fzf_out" | sed -n '1p')
+picked=$(printf '%s\n' "$fzf_out" | sed -n '2p')
+
+# Prefer the picked list item; fall back to free-typed query.
+selected="${picked:-$query}"
+[[ -z "$selected" ]] && exit 0
+
+# Handle the "browse" entry: open the OS-native folder picker.
+# Cross-platform: macOS (osascript) / Linux Gtk (zenity) / Linux KDE (kdialog)
+# / WSL+Windows (PowerShell COM dialog).
+pick_folder() {
+    if command -v osascript >/dev/null 2>&1; then
+        osascript -e 'POSIX path of (choose folder with prompt "Pick a project folder to pin")' 2>/dev/null
+    elif command -v zenity >/dev/null 2>&1; then
+        zenity --file-selection --directory --title="Pick a project folder to pin" 2>/dev/null
+    elif command -v kdialog >/dev/null 2>&1; then
+        kdialog --getexistingdirectory "$HOME" --title "Pick a project folder to pin" 2>/dev/null
+    elif command -v powershell.exe >/dev/null 2>&1; then
+        # WSL / Git Bash on Windows.
+        # Single quotes are intentional: $f must NOT expand in bash; PowerShell expands it.
+        # shellcheck disable=SC2016
+        ps_script='Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.FolderBrowserDialog; if ($f.ShowDialog() -eq "OK") { $f.SelectedPath }'
+        win_path=$(powershell.exe -NoProfile -Command "$ps_script" 2>/dev/null | tr -d '\r')
+        if [[ -n "$win_path" ]] && command -v wslpath >/dev/null 2>&1; then
+            wslpath -u "$win_path"
+        else
+            printf '%s' "$win_path"
+        fi
+    else
+        echo "" # no picker available
+    fi
+}
+
+if [[ "$selected" == "$BROWSE_LABEL" ]]; then
+    chosen=$(pick_folder)
+    if [[ -z "$chosen" ]]; then
+        # User cancelled, or no native folder picker is installed.
+        # Fall back to a text prompt so we still work in a headless tmux.
+        if [[ -t 0 ]]; then
+            printf 'Path: ' >&2
+            read -r chosen
+        fi
+    fi
+    if [[ -z "${chosen:-}" ]]; then
+        exit 0
+    fi
+    selected="${chosen%/}"
+    # Auto-pin so it persists for next time.
+    if [[ ! -f "$EXTRA_FILE" ]] || ! grep -qxF "$selected" "$EXTRA_FILE" 2>/dev/null; then
+        printf '%s\n' "$selected" >> "$EXTRA_FILE"
+    fi
+fi
+
+# Strip live-session (●) or pinned-project (★) marker if present.
+selected="${selected#● }"
+selected="${selected#★ }"
+
+# Expand leading ~ for manually-typed paths. case-glob doesn't tilde-expand,
+# so use explicit prefix checks.
+# shellcheck disable=SC2088  # ~ is a literal pattern, not an expansion; case-glob matches it
+if [[ "$selected" == "~" ]]; then
+  selected="$HOME"
+elif [[ "${selected:0:2}" == "~/" ]]; then
+  selected="$HOME/${selected:2}"
+fi
+
+# Resolve to (name, path).
+if [[ -d "$selected" ]]; then
+  path=$(cd "$selected" && pwd)
+  name=$(path_to_session_name "$path")
+elif [[ -d "${HOME}/${selected}" ]]; then
+  path="${HOME}/${selected}"
+  name=$(path_to_session_name "$path")
+else
+  # No matching directory → treat as existing tmux session name.
+  name="$selected"
+  path=""
+fi
+
+if ! tmux has-session -t="$name" 2>/dev/null; then
+  if [[ -z "$path" ]]; then
+    echo "No session '$name' and no matching directory." >&2
+    exit 1
+  fi
+  # Spawn the pane via an INTERACTIVE login shell (-i -l) so ~/.zshrc
+  # runs and nvm/node/mason all land in PATH. Without -i, zsh only sources
+  # zshenv+zprofile and nvm is missing → LSPs crash with exit 127.
+  # Then exec nvim; on nvim exit, drop back into a shell so the pane stays.
+  tmux new-session -ds "$name" -c "$path" \
+    "${SHELL:-/bin/zsh} -ilc 'nvim; exec ${SHELL:-/bin/zsh} -il'"
+fi
+
+if [[ -n "${TMUX:-}" ]]; then
+  tmux switch-client -t "$name"
+else
+  tmux attach -t "$name"
+fi
