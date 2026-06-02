@@ -107,3 +107,84 @@ EOF
     [ "${PINS[1]}" = "/Users/me/b" ]
     [ "${PINS[2]}" = "/Users/me/c" ]
 }
+
+# почему: REMOVAL = DEDUP'S MIRROR. If the picker lets users pin a path
+# but never unpin it, the "delete project" picker action is a lie. The
+# pin file must shrink on unpin or stale entries haunt the picker.
+@test "unpin: removes the target path" {
+    add_pin "$TEST_PIN_FILE" "/Users/me/a"
+    add_pin "$TEST_PIN_FILE" "/Users/me/b"
+    add_pin "$TEST_PIN_FILE" "/Users/me/c"
+    unpin "$TEST_PIN_FILE" "/Users/me/b"
+    [ "$REMOVED" -eq 1 ]
+    read_pins "$TEST_PIN_FILE"
+    [ "${#PINS[@]}" -eq 2 ]
+    [ "${PINS[0]}" = "/Users/me/a" ]
+    [ "${PINS[1]}" = "/Users/me/c" ]
+}
+
+# почему: removing the only entry should leave an empty file (not
+# delete the file). The picker reads PINS=[] from a missing or empty
+# file, but the file's existence vs. absence is observable to other
+# tools (e.g. `--validate` checks the dir). Preserve the file.
+@test "unpin: removes the only entry, file stays empty" {
+    add_pin "$TEST_PIN_FILE" "/Users/me/solo"
+    unpin "$TEST_PIN_FILE" "/Users/me/solo"
+    [ "$REMOVED" -eq 1 ]
+    [ -f "$TEST_PIN_FILE" ]
+    read_pins "$TEST_PIN_FILE"
+    [ "${#PINS[@]}" -eq 0 ]
+}
+
+# почему: the picker action is idempotent UX-wise — pressing `d` on
+# a project that's already gone must not error. The contract: silent
+# no-op with REMOVED=0. Violation = an error toast every time the
+# user clicks an already-deleted row, which is annoying.
+@test "unpin: idempotent — unpinning an absent path is a no-op" {
+    unpin "$TEST_PIN_FILE" "/Users/me/never-pinned"
+    [ "$REMOVED" -eq 0 ]
+}
+
+# почему: unpin on a never-created file (e.g. user has never browsed)
+# must not error and must not create the file. Creating an empty file
+# here would be a side effect with no caller asking for it.
+@test "unpin: missing file is a silent no-op" {
+    rm -f "$TEST_PIN_FILE"
+    unpin "$TEST_PIN_FILE" "/Users/me/anything"
+    [ "$REMOVED" -eq 0 ]
+    [ ! -f "$TEST_PIN_FILE" ]
+}
+
+# почему: same slash-stripping contract as add_pin. The picker
+# stores paths slashless; if unpin didn't strip, the user's
+# `d` action on a path added via the OS picker (which may give
+# `/foo/`) would silently fail to match. See add_pin:trailing-slash
+# test for the symmetric case.
+@test "unpin: trailing-slash path matches slashless existing" {
+    add_pin "$TEST_PIN_FILE" "/Users/me/foo"
+    unpin "$TEST_PIN_FILE" "/Users/me/foo/"
+    [ "$REMOVED" -eq 1 ]
+    read_pins "$TEST_PIN_FILE"
+    [ "${#PINS[@]}" -eq 0 ]
+}
+
+# почему: comments and blank lines must survive unpin. read_pins
+# strips them from PINS but they live in the file. A naive rewrite
+# that only writes PINS[] would erase user comments — silent data
+# loss on every delete.
+@test "unpin: preserves comments and blank lines in the file" {
+    cat > "$TEST_PIN_FILE" <<EOF
+# my curated list
+/Users/me/foo
+
+# /Users/me/commented-out
+/Users/me/bar
+EOF
+    unpin "$TEST_PIN_FILE" "/Users/me/foo"
+    read_pins "$TEST_PIN_FILE"
+    [ "${#PINS[@]}" -eq 1 ]
+    [ "${PINS[0]}" = "/Users/me/bar" ]
+    # Header comment must still be there.
+    grep -qF '# my curated list' "$TEST_PIN_FILE"
+    grep -qF '# /Users/me/commented-out' "$TEST_PIN_FILE"
+}

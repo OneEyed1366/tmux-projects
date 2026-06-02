@@ -21,6 +21,7 @@ tmux-sessionizer — switch to or create tmux sessions for project folders
 
 USAGE:
     tmux-sessionizer [OPTIONS]
+    tmux-sessionizer unpin <path>
 
 OPTIONS:
     -h, --help       Show this help and exit
@@ -128,6 +129,11 @@ while [[ $# -gt 0 ]]; do
         --validate)
             ACTION="validate"
             ;;
+        unpin)
+            ACTION="unpin"
+            # Don't shift here — the loop's trailing `shift` consumes
+            # this arg. The path then becomes $1 in the handler.
+            ;;
         --)
             shift
             break
@@ -187,6 +193,38 @@ MAX_DEPTH="${TMUX_SESSIONIZER_MAX_DEPTH:-$DEFAULT_MAX_DEPTH}"
 if [[ "$ACTION" == "validate" ]]; then
     validate_config
     exit $?
+fi
+
+# ---- unpin subcommand ----------------------------------------------------
+# Removes <path> from the pin file (idempotent). Runs before the fzf
+# flow so it works in non-tmux shells too. <path> is taken from the
+# first remaining positional arg after args-parsing.
+if [[ "${ACTION}" == "unpin" ]]; then
+    if [[ $# -lt 1 ]]; then
+        printf 'unpin: missing <path>\n' >&2
+        printf "Usage: tmux-sessionizer unpin <path>\n" >&2
+        exit 2
+    fi
+    target="$1"
+    # Tilde-expand so the user can type `~/projects/foo` in a shell.
+    # shellcheck disable=SC2088  # ~ is a literal pattern, not an expansion; case-glob matches it
+    if [[ "$target" == "~" ]]; then
+        target="$HOME"
+    elif [[ "${target:0:2}" == "~/" ]]; then
+        target="$HOME/${target:2}"
+    fi
+    unpin "$EXTRA_FILE" "$target"
+    rc=$?
+    if [[ $rc -ne 0 ]]; then
+        printf 'unpin failed\n' >&2
+        exit "$rc"
+    fi
+    if [[ "${REMOVED}" -eq 1 ]]; then
+        printf 'Unpinned: %s\n' "$target"
+    else
+        printf 'Not pinned (no-op): %s\n' "$target"
+    fi
+    exit 0
 fi
 
 # ---- Normal run ---------------------------------------------------------

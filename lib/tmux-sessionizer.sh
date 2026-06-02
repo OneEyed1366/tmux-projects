@@ -68,3 +68,54 @@ add_pin() {
     done
     printf '%s\n' "$p" >> "$file"
 }
+
+# unpin <file-path> <path>
+#   Removes <path> from the pin file (idempotent: no-op if absent).
+#   Trailing slash is stripped before comparison.
+#   Line-preserving rewrite: comments, blank lines, and ordering of the
+#   remaining entries survive untouched. The pin file is the user's
+#   curated hide list — silently dropping their `#` annotations on every
+#   delete would be data loss.
+#   Atomic via temp file + mv: a crash mid-rewrite leaves the original
+#   intact, not half-written. Torn pin files silently drop pins.
+#   Sets REMOVED=1 if a matching line was deleted, 0 otherwise — callers
+#   can use this to decide whether to also kill the matching tmux session.
+unpin() {
+    local file="$1"
+    local p="$2"
+    p="${p%/}"
+    REMOVED=0
+
+    # Nothing to remove when the file doesn't exist.
+    [[ -f "$file" ]] || return 0
+
+    local tmp
+    tmp=$(mktemp "${TMPDIR:-/tmp}/tmux-projects.XXXXXX")
+    # Best-effort cleanup if we abort before mv.
+    trap 'rm -f "$tmp"' RETURN
+
+    # Stream the file line-by-line: copy through everything except the
+    # line whose slashless trimmed form equals the target path. This
+    # preserves comments, blank lines, and surrounding whitespace verbatim.
+    local line trimmed
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        trimmed="${line#"${line%%[![:space:]]*}"}"   # ltrim
+        trimmed="${trimmed%"${trimmed##*[![:space:]]}"}"  # rtrim
+        trimmed="${trimmed%/}"
+        if [[ "$trimmed" == "$p" ]]; then
+            REMOVED=1
+            continue
+        fi
+        printf '%s\n' "$line" >> "$tmp"
+    done < "$file"
+
+    # Idempotent: path wasn't pinned, leave the file alone.
+    if [[ "$REMOVED" -eq 0 ]]; then
+        rm -f -- "$tmp"
+        trap - RETURN
+        return 0
+    fi
+
+    mv -- "$tmp" "$file"
+    trap - RETURN
+}

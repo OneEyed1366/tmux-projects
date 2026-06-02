@@ -5,6 +5,55 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `d` / `<C-d>` key in the Telescope picker removes a project
+  from the pin file (also kills the live tmux session, with a
+  confirmation prompt). `d` in normal mode (vim muscle memory
+  for the `dd` line-delete command), `<C-d>` in insert mode (bare
+  letters would type into the filter prompt). Both bound on
+  both the prompt and results buffers — works regardless of
+  which window has focus.
+- `<C-r>` / `r` key in the Telescope picker renames the current
+  entry's tmux session. `r` in normal mode (vim muscle memory),
+  `<C-r>` in insert mode (bare letters type into the filter
+  prompt). Bound on both the prompt and results buffers. Pinned
+  rows that have a live session can also be renamed — the
+  derived session name is used as the "old" name.
+- `tmux-sessionizer unpin <path>` CLI subcommand — idempotent, line-
+  preserving, works outside tmux too
+- `lib/tmux-sessionizer.sh::unpin()` — atomic, idempotent, preserves
+  `#` comments and blank lines in the pin file
+- `lua/tmux-projects.pins.remove()` — Lua mirror of the bash `unpin`,
+  same line-preserving and atomic-via-temp+rename semantics
+
+### Changed
+
+- Picker `<C-d>` on a `● <name>` (live-only) row now confirms and
+  kills the session, instead of refusing with a hint to use
+  `:TmuxKill`. The single-row quick path lives on the picker; bulk
+  multi-select kill still uses `:TmuxKill`.
+- After every successful `<C-d>` or `<C-r>` action, the picker
+  refreshes in place via `Picker:refresh(finder, { reset_prompt = false })`.
+  The user stays in the picker with their filter text preserved —
+  no close-and-reopen dance.
+
+### Notes
+
+- **Deletion is unpinnning, not file removal.** The `d` / `<C-d>`
+  action (and the `unpin` subcommand) remove the path from
+  `~/.config/tmux-projects.txt` only. The project directory on
+  disk is **never touched**. To restore a project, browse for it
+  or add the path manually to the pin file.
+- **Renaming affects the tmux session, not the pin file.** The
+  pin file is a list of paths, not names. After a rename, the
+  picker shows both `● <new>` and `★ /path` for the same project;
+  unpin and re-browse to clean up the display if you care.
+- Picker now shows `(Enter=open  d=delete  r=rename)` in the
+  prompt title.
+
 ## [0.1.0] - 2026-06-02
 
 ### Added
