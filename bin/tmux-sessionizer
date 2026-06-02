@@ -8,6 +8,11 @@ set -euo pipefail
 
 VERSION="0.1.0"
 
+# ---- Source library (testable pure functions) --------------------------
+_LIB_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+# shellcheck source=lib/tmux-sessionizer.sh
+source "$_LIB_DIR/../lib/tmux-sessionizer.sh"
+
 # ---- Help / version / validate -----------------------------------------
 
 show_help() {
@@ -167,18 +172,8 @@ DEFAULT_PROMPT="project> "
 DEFAULT_MAX_DEPTH="5"
 
 # ROOTS: parse TMUX_SESSIONIZER_ROOTS (colon-separated) and tilde-expand each entry.
-ROOTS=()
-if [[ -n "${TMUX_SESSIONIZER_ROOTS:-}" ]]; then
-    IFS=':' read -r -a ROOTS <<< "$TMUX_SESSIONIZER_ROOTS"
-    i=0
-    for i in "${!ROOTS[@]}"; do
-        # shellcheck disable=SC2088  # ~ is a literal pattern, not expansion
-        case "${ROOTS[i]}" in
-            "~") ROOTS[i]="$HOME" ;;
-            "~/"*) ROOTS[i]="$HOME/${ROOTS[i]:2}" ;;
-        esac
-    done
-else
+parse_roots "${TMUX_SESSIONIZER_ROOTS:-}"
+if [[ ${#ROOTS[@]} -eq 0 ]]; then
     ROOTS=("${DEFAULT_ROOTS[@]}")
 fi
 
@@ -196,20 +191,6 @@ fi
 
 # ---- Normal run ---------------------------------------------------------
 
-# Derive a tmux-safe session name from a directory path.
-# Leading dot is dropped entirely (~/.config → "config", not "_config").
-# Internal dots/spaces/colons/slashes become underscores so tmux's target
-# syntax (session.window.pane) doesn't get confused.
-path_to_session_name() {
-    local p="$1"
-    local base
-    base=$(basename "$p")
-    base="${base#.}"                          # drop leading dot
-    # shellcheck disable=SC2001
-    base=$(printf '%s' "$base" | tr ' .:/' '____')
-    printf '%s' "$base"
-}
-
 # 1. Live sessions first, marked with ● so we can strip them later.
 live=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | sed 's/^/● /' || true)
 
@@ -226,16 +207,15 @@ top_level=$(fd --type d --max-depth 1 --min-depth 1 . "${ROOTS[@]}" 2>/dev/null 
 #    Hide entries whose session is already live (avoids ★path + ●session duplicates).
 extra=""
 if [[ -f "$EXTRA_FILE" ]]; then
+    read_pins "$EXTRA_FILE"
     live_names=$(printf '%s\n' "$live" | sed 's/^● //')
-    while IFS= read -r p; do
-        [[ -z "$p" || "$p" =~ ^[[:space:]]*# ]] && continue
-        p="${p%/}"
+    for p in "${PINS[@]}"; do
         sess=$(path_to_session_name "$p")
         if printf '%s\n' "$live_names" | grep -qxF "$sess"; then
             continue  # already shown as live
         fi
         extra+="★ ${p}"$'\n'
-    done < "$EXTRA_FILE"
+    done
 fi
 
 scanned=$(printf '%s\n%s\n' "$git_roots" "$top_level" | awk 'NF' | sort -u)
@@ -299,9 +279,7 @@ if [[ "$selected" == "$BROWSE_LABEL" ]]; then
     fi
     selected="${chosen%/}"
     # Auto-pin so it persists for next time.
-    if [[ ! -f "$EXTRA_FILE" ]] || ! grep -qxF "$selected" "$EXTRA_FILE" 2>/dev/null; then
-        printf '%s\n' "$selected" >> "$EXTRA_FILE"
-    fi
+    add_pin "$EXTRA_FILE" "$selected"
 fi
 
 # Strip live-session (●) or pinned-project (★) marker if present.
