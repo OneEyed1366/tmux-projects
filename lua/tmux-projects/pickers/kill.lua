@@ -57,12 +57,21 @@ function M.kill()
                         end
                     end
                     actions.close(prompt_bufnr)
+                    local killed = {}
                     for _, s in ipairs(picks) do
-                        vim.system(tmux.cmd("kill-session", "-t", s)):wait()
+                        local ok, err = tmux.kill_session(s)
+                        if ok then
+                            table.insert(killed, s)
+                        else
+                            vim.notify(
+                                "kill-session failed for " .. s .. ": " .. tostring(err or ""),
+                                vim.log.levels.WARN
+                            )
+                        end
                     end
-                    if #picks > 0 then
+                    if #killed > 0 then
                         vim.notify(
-                            "Killed " .. #picks .. " session(s): " .. table.concat(picks, ", "),
+                            "Killed " .. #killed .. " session(s): " .. table.concat(killed, ", "),
                             vim.log.levels.INFO
                         )
                     end

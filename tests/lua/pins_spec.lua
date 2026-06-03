@@ -179,4 +179,45 @@ T["remove: preserves comments and blank lines in the file"] = function()
     assert(contents:find("\n\n", 1, true), "lost blank line")
 end
 
+-- почему: pin files written by external tools (or hand-edited in
+-- editors that don't auto-add a trailing newline) may lack a final
+-- `\n`. Default `*l` iterator silently drops the unterminated last
+-- line, which would erase the user's last entry on every delete.
+-- This test pins the data-loss fix: surviving entries — including
+-- the unterminated last one — must round-trip through remove().
+--
+-- Byte-exact: the file must be EXACTLY the expected bytes (no
+-- trailing newline added, none dropped). Without `eq` on the raw
+-- bytes, a future regression that "normalizes" the file (adds a
+-- `\n`) would pass content checks via pins.read but still be a
+-- contract violation per share/SPEC.md.
+T["remove: preserves file's trailing-newline state (no newline)"] = function()
+    local p = vim.fn.tempname()
+    local f = io.open(p, "wb")
+    f:write("/Users/me/a\n/Users/me/b") -- no final \n
+    f:close()
+    eq(true, pins.remove(p, "/Users/me/a"))
+    eq({ "/Users/me/b" }, pins.read(p))
+    local f2 = io.open(p, "rb")
+    local contents = f2:read("*a")
+    f2:close()
+    eq("/Users/me/b", contents) -- exactly, no trailing newline
+end
+
+-- почему: symmetric case — file with trailing newline must keep
+-- it after remove. The rewrite contract in share/SPEC.md: "A
+-- file with one keeps one." Mirrors the parallel bash test.
+T["remove: preserves file's trailing-newline state (with newline)"] = function()
+    local p = vim.fn.tempname()
+    local f = io.open(p, "wb")
+    f:write("/Users/me/a\n/Users/me/b\n") -- has final \n
+    f:close()
+    eq(true, pins.remove(p, "/Users/me/a"))
+    eq({ "/Users/me/b" }, pins.read(p))
+    local f2 = io.open(p, "rb")
+    local contents = f2:read("*a")
+    f2:close()
+    eq("/Users/me/b\n", contents) -- exactly, with trailing newline
+end
+
 return T

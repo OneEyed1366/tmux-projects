@@ -40,12 +40,16 @@ parse_roots() {
 # read_pins <file-path> → sets global PINS array
 #   Parses pin file: comments (#), blank lines, trailing slashes stripped.
 #   Missing file → PINS stays empty.
+#   Handles a file that lacks a final `\n` (e.g. created by an
+#   external tool that doesn't auto-terminate). SYMMETRY with
+#   `pins.lua::M.read` and `lib/tmux-sessionizer.sh::unpin` —
+#   all three must tolerate unterminated last line.
 read_pins() {
     local file="$1"
     PINS=()
     [[ -f "$file" ]] || return 0
     local p
-    while IFS= read -r p; do
+    while IFS= read -r p || [[ -n "$p" ]]; do
         [[ -z "$p" || "$p" =~ ^[[:space:]]*# ]] && continue
         p="${p%/}"
         PINS+=("$p")
@@ -94,6 +98,28 @@ unpin() {
     # Best-effort cleanup if we abort before mv.
     trap 'rm -f "$tmp"' RETURN
 
+    # Detect whether the file ends with a newline. Rewrite must
+    # preserve the file's exact byte sequence — comments, blank
+    # lines, surrounding whitespace, AND the trailing-newline
+    # state. Mirrors the lua side's `lines("*L")` write-through.
+    # Without this, a file without a final `\n` would silently
+    # gain one on every delete — same class of bug as dropping
+    # a `#` comment.
+    #
+    # NB: `$(tail -c 1 file)` strips the trailing newline via
+    # command substitution, so we can't use it directly to compare
+    # against `$'\n'`. Pipe through `od -tx1` instead — od reads
+    # bytes without any shell-level newline handling. Hex `0a` =
+    # `\n`.
+    local has_trailing_nl=0
+    if [[ -s "$file" ]]; then
+        local last_hex
+        last_hex=$(tail -c 1 "$file" 2>/dev/null | od -An -tx1 | tr -d ' \n')
+        if [[ "$last_hex" == "0a" ]]; then
+            has_trailing_nl=1
+        fi
+    fi
+
     # Stream the file line-by-line: copy through everything except the
     # line whose slashless trimmed form equals the target path. This
     # preserves comments, blank lines, and surrounding whitespace verbatim.
@@ -114,6 +140,19 @@ unpin() {
         rm -f -- "$tmp"
         trap - RETURN
         return 0
+    fi
+
+    # If the original file lacked a trailing newline, strip the
+    # one our `printf '%s\n'` above added. Matches the lua side's
+    # `*L` write-through (both preserve the user's exact byte
+    # sequence).
+    if [[ $has_trailing_nl -eq 0 && -s "$tmp" ]]; then
+        local sz
+        sz=$(wc -c < "$tmp")
+        if [[ $sz -gt 0 ]]; then
+            head -c $((sz - 1)) "$tmp" > "$tmp.no_nl"
+            mv "$tmp.no_nl" "$tmp"
+        fi
     fi
 
     mv -- "$tmp" "$file"

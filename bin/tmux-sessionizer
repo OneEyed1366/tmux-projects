@@ -39,7 +39,7 @@ ENVIRONMENT:
 
     TMUX_SESSIONIZER_BROWSE_LABEL
         Label for the OS folder picker entry in the fzf list.
-        Default: "+ Browse for folder…  (Finder)"
+        Default: "+ Browse for folder…"
 
     TMUX_SESSIONIZER_PROMPT
         fzf prompt string. Default: "project> "
@@ -173,7 +173,7 @@ fi
 # Defaults (overridable via TMUX_SESSIONIZER_* env vars)
 DEFAULT_ROOTS=("$HOME/projects" "$HOME/personal")
 DEFAULT_EXTRA_FILE="$HOME/.config/tmux-projects.txt"
-DEFAULT_BROWSE_LABEL="+ Browse for folder…  (Finder)"
+DEFAULT_BROWSE_LABEL="+ Browse for folder…"
 DEFAULT_PROMPT="project> "
 DEFAULT_MAX_DEPTH="5"
 
@@ -265,7 +265,7 @@ scanned=$(printf '%s\n%s\n' "$git_roots" "$top_level" | awk 'NF' | sort -u)
 fzf_out=$( { printf '%s\n' "$BROWSE_LABEL"; printf '%s\n' "$live"; printf '%s\n' "$extra"; printf '%s\n' "$scanned"; } \
     | awk 'NF' \
     | fzf --prompt="$PROMPT" --print-query --no-multi \
-          --header='Enter=open  ★=pinned  ●=live  + Browse=pick in Finder' )
+          --header='Enter=open  ★=pinned  ●=live  + Browse=pick folder via OS dialog' )
 
 [[ -z "${fzf_out:-}" ]] && exit 0
 

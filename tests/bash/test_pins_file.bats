@@ -188,3 +188,51 @@ EOF
     grep -qF '# my curated list' "$TEST_PIN_FILE"
     grep -qF '# /Users/me/commented-out' "$TEST_PIN_FILE"
 }
+
+# почему: pin files written by external tools (or hand-edited in
+# editors that don't auto-add a trailing newline) may lack a final
+# `\n`. The `read -r line || [[ -n "$line" ]]` clause in unpin() is
+# the bash equivalent of lua's `lines("*L")` — both must handle the
+# unterminated last line, or that line is silently dropped on every
+# delete. SYMMETRY with the lua side's pins_spec test.
+#
+# Byte-exact check: `cmp` compares the file to an expected byte
+# sequence. If the rewrite silently adds a trailing `\n` (or drops
+# one), this test fails. Lock-in for the contract documented in
+# share/SPEC.md.
+@test "unpin: preserves file's trailing-newline state (no newline)" {
+    printf '/Users/me/a\n/Users/me/b' > "$TEST_PIN_FILE" # no final \n
+    unpin "$TEST_PIN_FILE" "/Users/me/a"
+    [ "$REMOVED" -eq 1 ]
+    read_pins "$TEST_PIN_FILE"
+    [ "${#PINS[@]}" -eq 1 ]
+    [ "${PINS[0]}" = "/Users/me/b" ]
+    # Byte-exact: must be exactly /Users/me/b, no trailing newline
+    local expected
+    expected=$(mktemp)
+    printf '/Users/me/b' > "$expected"
+    cmp -s "$TEST_PIN_FILE" "$expected"
+    [ "$?" -eq 0 ]
+    rm -f "$expected"
+}
+
+# почему: symmetric case — file with trailing newline must keep it
+# after unpin. The rewrite contract in share/SPEC.md: "A file with
+# one keeps one." Without the `has_trailing_nl=1` branch in unpin,
+# this would still pass (printf always adds \n), but the parallel
+# test pins the other half of the contract.
+@test "unpin: preserves file's trailing-newline state (with newline)" {
+    printf '/Users/me/a\n/Users/me/b\n' > "$TEST_PIN_FILE" # has \n
+    unpin "$TEST_PIN_FILE" "/Users/me/a"
+    [ "$REMOVED" -eq 1 ]
+    read_pins "$TEST_PIN_FILE"
+    [ "${#PINS[@]}" -eq 1 ]
+    [ "${PINS[0]}" = "/Users/me/b" ]
+    # Byte-exact: must be exactly /Users/me/b\n
+    local expected
+    expected=$(mktemp)
+    printf '/Users/me/b\n' > "$expected"
+    cmp -s "$TEST_PIN_FILE" "$expected"
+    [ "$?" -eq 0 ]
+    rm -f "$expected"
+}

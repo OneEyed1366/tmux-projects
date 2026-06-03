@@ -11,6 +11,10 @@ Override via `TMUX_SESSIONIZER_EXTRA_FILE` (bash) or `setup({ extra_file = "..."
 - Trailing slashes are stripped
 - Whitespace at line ends is stripped
 - Deduplication is exact-match (case-sensitive, no normalization)
+- Rewrite operations (`unpin`, `pins.remove`) preserve the file's
+  exact byte sequence: comments, blank lines, surrounding whitespace,
+  AND the trailing-newline state. A file without a final `\n` stays
+  without one; a file with one keeps one.
 
 ## Picker UI markers
 
@@ -38,6 +42,25 @@ implementations must produce identical names for the same input.
 | `/var/log` | `log` |
 | `~/a.b/c.d` | `c.d` (only basename is transformed) |
 | `~/work//foo` | `foo` (intermediate slashes don't matter; basename is the result) |
+
+## Session pane shell
+
+Both the bash (`bin/tmux-sessionizer`) and nvim (`lua/tmux-projects/tmux.lua`)
+sides spawn the session pane the same way:
+
+```
+${SHELL:-/bin/zsh} -ilc 'nvim; exec ${SHELL:-/bin/zsh} -il'
+```
+
+The `-i -l` flags are an INTERACTIVE login shell so `~/.zshrc` (or
+equivalent) runs and nvm/node/mason land in PATH. Without `-i`, zsh
+only sources `zshenv`+`zprofile` and nvm is missing → LSPs crash
+with exit 127. After nvim exits, the pane drops back to a shell so
+the window stays usable.
+
+If you change this string, change it on **both** sides — there is
+no test that catches a drift here yet (the contract is the source
+code itself + this paragraph).
 
 ## Symmetry contract
 
