@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- Pin file `unpin` / `pins.remove` now preserve the file's exact
+  byte sequence, including the trailing-newline state. A file
+  without a final `\n` stays without one; a file with one keeps
+  one. Previously the lua `pins.remove` would drop the last line
+  on unterminated files, and the bash `unpin` would silently
+  append a `\n` if the original lacked one.
+
+### Changed
+
+- `BROWSE_LABEL` default dropped the `(Finder)` suffix in help
+  text, default value, and fzf header. Picker is cross-platform
+  (osascript / zenity / kdialog / powershell); the macOS-only
+  suffix was misleading on Linux/WSL.
+
 ## [0.2.0] - 2026-06-02
 
 ### Added
