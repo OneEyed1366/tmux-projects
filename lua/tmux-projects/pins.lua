@@ -59,15 +59,24 @@ function M.remove(extra_file, p)
     end
 
     local removed = false
-    for line in src:lines() do
-        -- Strip leading/trailing whitespace and a trailing slash,
-        -- mirroring the read() contract.
-        local trimmed = line:gsub("^%s+", ""):gsub("%s+$", ""):gsub("/$", "")
+    -- `*L` returns each line WITH its terminator (or the unterminated
+    -- tail verbatim). This preserves the user's exact byte sequence:
+    -- comments, blank lines, surrounding whitespace, and crucially
+    -- a final line that has no trailing `\n` (e.g. an externally
+    -- created file, or a hand-edited file whose last edit didn't add
+    -- a newline). The default `*l` iterator silently drops the
+    -- unterminated last line — a real data-loss bug for pin files.
+    for line in src:lines("*L") do
+        local bare = line
+        if bare:sub(-1) == "\n" then
+            bare = bare:sub(1, -2)
+        end
+        local trimmed = bare:gsub("^%s+", ""):gsub("%s+$", ""):gsub("/$", "")
         if trimmed == p then
             removed = true
         else
+            -- Write through verbatim — terminator and all.
             tmp:write(line)
-            tmp:write("\n")
         end
     end
     src:close()
