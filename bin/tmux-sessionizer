@@ -21,6 +21,8 @@ tmux-sessionizer — switch to or create tmux sessions for project folders
 
 USAGE:
     tmux-sessionizer [OPTIONS]
+    tmux-sessionizer open <path>
+    tmux-sessionizer kill <path>
     tmux-sessionizer unpin <path>
 
 OPTIONS:
@@ -57,6 +59,13 @@ BEHAVIOR:
     the dir's basename (with tmux-unsafe chars replaced by _). The
     session runs an interactive shell that exec's nvim, then drops back
     to a shell on nvim exit.
+
+    `open <path>` does the same reuse-or-create-then-switch, but for an
+    explicit path and without the fzf picker. Intended for scripts and
+    editor integrations (e.g. lazygit worktree switching).
+
+    `kill <path>` kills the session bound to <path> if it exists (no-op
+    otherwise). Intended for cleanup when a worktree/project is removed.
 
 EXAMPLES:
     tmux-sessionizer
@@ -133,6 +142,19 @@ while [[ $# -gt 0 ]]; do
             ACTION="unpin"
             # Don't shift here — the loop's trailing `shift` consumes
             # this arg. The path then becomes $1 in the handler.
+            ;;
+        open)
+            ACTION="open"
+            # Non-interactive: open-or-switch a session for a given <path>,
+            # skipping fzf. Used by lazygit's worktree custom command. Like
+            # `unpin`, don't shift — trailing `shift` consumes it; <path>
+            # becomes $1 below.
+            ;;
+        kill)
+            ACTION="kill"
+            # Non-interactive: kill the session bound to a given <path> (if
+            # any). Used when a worktree is removed. Don't shift — <path>
+            # becomes $1 in the handler.
             ;;
         --)
             shift
@@ -227,6 +249,39 @@ if [[ "${ACTION}" == "unpin" ]]; then
     exit 0
 fi
 
+# ---- kill subcommand -----------------------------------------------------
+# Non-interactive: `tmux-sessionizer kill <path>`. Derives the session name
+# from <path> and kills it if it exists (idempotent). Used when a worktree is
+# removed so its tmux session doesn't linger. Never fails on a missing session.
+if [[ "$ACTION" == "kill" ]]; then
+    if [[ $# -lt 1 ]]; then
+        printf 'kill: missing <path>\n' >&2
+        printf "Usage: tmux-sessionizer kill <path>\n" >&2
+        exit 2
+    fi
+    kname=$(path_to_session_name "${1%/}")
+    if tmux has-session -t="$kname" 2>/dev/null; then
+        tmux kill-session -t "$kname" && printf 'Killed session: %s\n' "$kname"
+    else
+        printf 'No session for path (no-op): %s\n' "$1"
+    fi
+    exit 0
+fi
+
+# ---- open subcommand -----------------------------------------------------
+# Non-interactive entry point: `tmux-sessionizer open <path>`. Resolves the
+# path to a session (same name/spawn/switch logic as the fzf flow below) but
+# skips the picker entirely. lazygit's worktree custom command calls this so
+# switching a worktree lands you straight in its tmux session.
+if [[ "$ACTION" == "open" ]]; then
+    if [[ $# -lt 1 ]]; then
+        printf 'open: missing <path>\n' >&2
+        printf "Usage: tmux-sessionizer open <path>\n" >&2
+        exit 2
+    fi
+    selected="$1"
+else
+
 # ---- Normal run ---------------------------------------------------------
 
 # 1. Live sessions first, marked with ● so we can strip them later.
@@ -275,6 +330,8 @@ picked=$(printf '%s\n' "$fzf_out" | sed -n '2p')
 # Prefer the picked list item; fall back to free-typed query.
 selected="${picked:-$query}"
 [[ -z "$selected" ]] && exit 0
+
+fi  # end of interactive (non-"open") flow
 
 # Handle the "browse" entry: open the OS-native folder picker.
 # Cross-platform: macOS (osascript) / Linux Gtk (zenity) / Linux KDE (kdialog)
