@@ -416,7 +416,12 @@ if ! tmux has-session -t="$name" 2>/dev/null; then
     "${SHELL:-/bin/zsh} -ilc 'nvim; exec ${SHELL:-/bin/zsh} -il'"
 fi
 
-if [[ -n "${TMUX:-}" ]]; then
+# We're "inside tmux" if either $TMUX is set (normal pane) or $TMUX_SOCKET is
+# set (our ghostty-tmux wrapper / editor integration where $TMUX may not be
+# inherited by a grandchild process like lazygit-in-nvim). In both cases we
+# must switch-client, NOT attach — `attach` from a non-client context (no real
+# tty client) blocks forever, which manifests as lazygit hanging.
+if [[ -n "${TMUX:-}" || -n "${TMUX_SOCKET:-}" ]]; then
   tmux switch-client -t "$name"
 else
   tmux attach -t "$name"
