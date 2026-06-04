@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-06-04
+
+### Fixed
+
+- Opening a project no longer hangs when invoked from a context that
+  isn't a real tmux client — most visibly `lazygit` worktree switching
+  inside nvim. Previously `$TMUX` could be unset for such grandchild
+  processes, so the script fell back to `tmux attach`, which blocks
+  forever without a tty client. It now also treats `$TMUX_SOCKET` as
+  "inside tmux" and uses `switch-client` in these cases.
+
 ## [0.3.0] - 2026-06-04
 
 ### Added
