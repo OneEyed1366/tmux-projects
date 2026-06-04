@@ -19,6 +19,10 @@
 .luarc.json
 .luarc.jsonc
 
+# Un-ignore project files that are excluded by the global gitignore
+!AGENTS.md
+!.opencode/
+
 # OS
 .DS_Store
 
