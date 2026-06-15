@@ -102,6 +102,7 @@ tmux-sessionizer --validate
 ```lua
 {
     "OneEyed1366/tmux-projects",
+    build = "./install.sh",
     dependencies = { "nvim-telescope/telescope.nvim" },
     config = function()
         require("tmux-projects").setup({})
@@ -114,6 +115,7 @@ tmux-sessionizer --validate
 ```lua
 use {
     "OneEyed1366/tmux-projects",
+    run = "./install.sh",
     config = function() require("tmux-projects").setup({}) end,
 }
 ```
@@ -121,7 +123,7 @@ use {
 #### [vim-plug](https://github.com/junegunn/vim-plug)
 
 ```vim
-Plug 'OneEyed1366/tmux-projects'
+Plug 'OneEyed1366/tmux-projects', { 'do': './install.sh' }
 " then in init.lua:
 lua require('tmux-projects').setup({})
 ```
